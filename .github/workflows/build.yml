@@ -8,14 +8,11 @@ jobs:
   build:
     runs-on: windows-latest
 
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node (stable)
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -26,14 +23,14 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build frontend
+      - name: Build frontend (your script)
         run: node ./scripts/build.mjs
 
       - name: Build Electron installer
-        run: npx electron-builder --win nsis
+        run: npx electron-builder --win nsis --publish never
 
-      - name: Upload installer
+      - name: Upload installer artifact
         uses: actions/upload-artifact@v4
         with:
-          name: setup
+          name: windows-installer
           path: dist/*.exe
