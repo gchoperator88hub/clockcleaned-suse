@@ -8,22 +8,28 @@ jobs:
   build:
     runs-on: windows-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node (stable)
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
+
+      - name: Show Node version
+        run: node -v
 
       - name: Install dependencies
         run: npm install
 
-      - name: Build frontend (your system)
+      - name: Build frontend
         run: node ./scripts/build.mjs
 
-      - name: Build Electron app
+      - name: Build Electron installer
         run: npx electron-builder --win nsis
 
       - name: Upload installer
