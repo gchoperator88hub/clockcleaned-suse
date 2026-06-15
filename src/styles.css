@@ -1,0 +1,376 @@
+:root { 
+  --t-purple: #6264a7; --t-brd: #edebe9; --hour-h: 100px;
+  --line-c: #d93b3b; --line-w: 2px;
+  --clk-size: 220px; --clk-bg: #ffffff; --clk-brd-c: #6264a7; --clk-brd-w: 5px;
+  --h-hand: #323130; --m-hand: #605e5c; --s-hand: #d93b3b;
+  --num-c: #323130; --num-fs: 1rem; --dig-fs: 1.1rem;
+  --hdr-fs: 1.5rem; --hdr-txt: #323130;
+  /* Make left time labels match header prominence by default */
+  --time-c: #323130; --time-fs: var(--hdr-item-fs);
+  --time-fw: 800;
+  --alarm-txt-c: #d93b3b; --alarm-txt-fs: 0.95rem;
+  --alarm-marker-c: var(--line-c); --alarm-marker-size: 12px;
+  --today-c: var(--t-purple);
+  --today-col-bg: #f6f7fb;
+  --now-cell-bg: rgba(217, 59, 59, 0.08);
+  --now-cell-brd: rgba(217, 59, 59, 0.55);
+  --hdr-item-fs: 1.2rem; --hdr-item-c: #323130;
+  --dig-c: #323130; --dig-fs: 1.1rem;
+  --widget-gap: 6px;
+  --sec-tick-c: rgba(50,49,48,0.35);
+  --sec-tick-major-c: rgba(50,49,48,0.5);
+  --sec-tick-w: 2px; --sec-tick-h: 10px; --sec-tick-major-h: 16px;
+  --sec-tick-inset: 14px;
+  --now-badge-fs: 0.85em;
+  --now-badge-c: var(--line-c);
+  --now-badge-bg: rgba(255,255,255,0.85);
+  --now-badge-brd: rgba(0,0,0,0.08);
+}
+* { box-sizing: border-box; }
+body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', sans-serif; background: white; overflow: hidden; }
+
+/* Шапка Teams */
+.app-bar { height: 48px; background: white; border-bottom: 1px solid var(--t-brd); display: flex; align-items: center; padding: 0 20px; font-weight: 600; color: #323130; z-index: 200; position: relative; }
+
+.view-area { position: relative; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+/* Нерухомі заголовки дат */
+.grid-hdr { display: grid; grid-template-columns: 60px repeat(7, 1fr); border-bottom: 1px solid var(--t-brd); background: white; z-index: 150; position: relative; }
+.hdr-cell { text-align: left; padding: 10px 15px; border-right: 1px solid var(--t-brd); }
+.hdr-cell b { font-size: var(--hdr-item-fs); display: block; color: var(--hdr-item-c); }
+.hdr-cell span { font-size: var(--hdr-item-fs); color: var(--hdr-item-c); opacity: 0.75; }
+.hdr-cell.today { color: var(--today-c); border-top: 4px solid var(--today-c); padding-top: 6px; }
+
+/* Точне перефарбування 11 кнопок місяців поверх інлайн-стилів JS */
+.month-btn:not([style*="#ff0000"]) {
+  color: var(--m11-txt) !important;
+  background: var(--m11-bg) !important;
+  background-color: var(--m11-bg) !important;
+}
+
+/* Зміна кольору тексту для 6 не-поточних днів */
+.grid-hdr .hdr-cell:not(.today),
+.grid-hdr .hdr-cell:not(.today) b,
+.grid-hdr .hdr-cell:not(.today) span {
+  color: var(--day-text-c) !important;
+}
+
+/* Зміна кольору фону для 6 не-поточних днів */
+.grid-hdr .hdr-cell:not(.today) {
+  background-color: var(--day-bg-c) !important;
+}
+
+/* ЧЕРВОНА ЛІНІЯ (Через всю таблицю) */
+.red-line-full { position: absolute; left: 0; width: 100%; height: var(--line-w); background: var(--line-c); z-index: 100; pointer-events: none; }
+.red-line-full::after { content: ''; position: absolute; left: 55px; top: -4px; width: 10px; height: 10px; background: var(--line-c); border-radius: 50%; }
+
+/* Контент сітки */
+.scroller { position: relative; flex-grow: 1; overflow: hidden; }
+.grid-content { display: grid; grid-template-columns: 60px repeat(7, 1fr); width: 100%; position: absolute; top: 0; left: 0; transition: transform 0.1s linear; }
+
+.time-sidebar { border-right: 1px solid var(--t-brd); background: #fafafa; }
+.day-column { border-right: 1px solid var(--t-brd); background: white; position: relative; }
+.day-column.today-col { background: var(--today-col-bg); }
+
+/* Клітинка з сіткою (Net Pattern) */
+.cell { height: var(--hour-h); border-bottom: 1px solid var(--t-brd); position: relative; box-sizing: border-box; }
+.cell::after { content: ''; position: absolute; top: 50%; left: 0; width: 100%; border-top: 1px dashed #f0f0f0; }
+.cell.now-cell {
+  background: var(--now-cell-bg);
+  outline: 2px solid var(--now-cell-brd);
+  outline-offset: -2px;
+  z-index: 1;
+}
+.cell.now-cell::before {
+  content: attr(data-now);
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  font-size: var(--now-badge-fs);
+  font-weight: 800;
+  color: var(--now-badge-c);
+  background: var(--now-badge-bg);
+  border: 1px solid var(--now-badge-brd);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+.h-label { font-size: var(--time-fs); font-weight: var(--time-fw); color: var(--time-c); text-align: right; padding-right: 8px; display: block; position: absolute; top: -10px; width: 100%; }
+
+/* Віджет */
+#master-widget {
+  position: absolute;
+  top: 80px;
+  right: 60px;
+  max-width: calc(100vw - 20px);
+  z-index: 1000;
+  cursor: move;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  filter: drop-shadow(0 12px 30px rgba(0,0,0,0.15));
+}
+.alarm-time-btn {
+  margin-bottom: var(--widget-gap);
+  padding: 0 !important; /* Повністю прибирає додаткові рамки навколо тексту */
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: var(--alarm-txt-fs);
+  color: var(--alarm-txt-c);
+  text-align: center;
+  cursor: pointer;
+  font-family: inherit;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  box-shadow: none;
+}
+.alarm-time-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.alarm-time-btn:focus-visible {
+  outline: 2px solid var(--t-purple);
+  outline-offset: 2px;
+}
+.alarm-section {
+  border-top: 1px solid #eee;
+  padding-top: 4px;
+  margin-top: 8px;
+}
+.analog-body { width: var(--clk-size); height: var(--clk-size); background: var(--clk-bg); border: var(--clk-brd-w) solid var(--clk-brd-c); border-radius: 50%; position: relative; }
+.sec-marks {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.sec-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: var(--sec-tick-w);
+  height: var(--sec-tick-h);
+  background: var(--sec-tick-c);
+  border-radius: 2px;
+}
+.sec-tick.major {
+  height: var(--sec-tick-major-h);
+  background: var(--sec-tick-major-c);
+}
+.alarm-marker-wrap {
+  position: absolute;
+  inset: calc(var(--clk-brd-w) * -1);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: rotate(0deg);
+}
+.alarm-marker {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  width: 0;
+  height: 0;
+  transform: translateX(-50%);
+  border-left: calc(var(--alarm-marker-size) * 0.66) solid transparent;
+  border-right: calc(var(--alarm-marker-size) * 0.66) solid transparent;
+  border-bottom: var(--alarm-marker-size) solid var(--alarm-marker-c);
+  filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
+}
+.hand { position: absolute; bottom: 50%; left: 50%; transform-origin: bottom; 
+transform: translateX(-50%); border-radius: 10px; }
+#m-h { background: var(--h-hand) !important; opacity: 1 !important; }
+.num { position: absolute; width: 100%; height: 100%; text-align: center; padding: 12px; box-sizing: border-box; font-weight: 700; font-size: var(--num-fs); color: var(--num-c); }
+.digit-info { margin-top: var(--widget-gap); padding: 0; background: transparent; border: none; font-weight: 800; font-size: var(--dig-fs); color: var(--dig-c); }
+.digit-row { display: flex; gap: 10px; align-items: baseline; justify-content: center; width: 100%; max-width: 100vw; }
+#v-time, #v-date { font-size: var(--dig-fs); color: var(--dig-c); display: inline-block; }
+#v-date { opacity: 1 !important; white-space: nowrap; margin-left: 10px; }
+
+/* Панель */
+.gear-btn { position: fixed; bottom: 30px; right: 30px; z-index: 2000; cursor: pointer; background: #6264a7; color: white; border-radius: 50%; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; box-shadow: 0 5px 15px rgba(0,0,0,0.3); font-size: 2rem; border: none; }
+.side-panel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: min(400px, 92vw);
+  height: 100%;
+  background: white;
+  z-index: 2001;
+  transition: transform 0.4s;
+  transform: translateX(110%);
+  overflow-y: auto;
+  padding: 30px;
+  box-shadow: -10px 0 40px rgba(0,0,0,0.2);
+}
+.side-panel.open { transform: translateX(0); }
+.row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9rem; }
+input[type="range"] { width: 160px; }
+input[type="color"] { border: none; width: 35px; height: 35px; cursor: pointer; background: none; }
+
+.alarm-modal {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 4000;
+}
+.alarm-modal.open { display: flex; }
+.alarm-card {
+  width: min(420px, calc(100vw - 40px));
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0,0,0,0.25);
+  padding: 18px 18px 14px;
+}
+.alarm-title {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: #323130;
+}
+.alarm-sub {
+  margin-top: 6px;
+  color: #605e5c;
+  font-size: 0.95rem;
+}
+.alarm-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+.alarm-btn {
+  border: 1px solid #ddd;
+  background: #fff;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: 700;
+}
+.alarm-btn-primary {
+  background: var(--t-purple);
+  border-color: var(--t-purple);
+  color: #fff;
+}
+#grid-main, .grid-main {
+    height: max-content !important;
+    min-height: 100% !important;
+}
+
+
+
+/* Великий фон тепер повністю підпорядкований вибору кольору з налаштувань і оптимізований */
+#alarm-modal {
+ position: fixed !important;
+ inset: 0 !important;
+ width: 100vw !important;
+ height: 100vh !important;
+ margin: 0 !important;
+ padding: 0 !important;
+ border: none !important;
+ z-index: 4000 !important;
+ display: none;
+ 
+ /* ЗВ'ЯЗОК З ПАНЕЛЛЮ: використовуємо колір 1, обраний у вашому меню */
+ background: var(--flash-c1, #ff0000) !important; 
+ 
+ /* ЛІКВІДАЦІЯ СПАЙКІВ: повна апаратна ізоляція шару для GPU */
+ will-change: background-color, transform !important;
+ transform: translate3d(0, 0, 0) !important;
+ backface-visibility: hidden !important;
+}
+
+/* Вікно відкрите */
+#alarm-modal.open {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* БЛИМАЄ ТІЛЬКИ ЦЯ КАРТКА (Alarm Pop-up) */
+#alarm-modal .alarm-card, 
+#alarm-modal div[class*="card"] {
+ position: relative !important;
+ width: auto !important;
+ max-width: 90% !important;
+ padding: 30px !important;
+ border-radius: 12px !important;
+ z-index: 4002 !important;
+ background: #ffffff !important; 
+ 
+ /* ЗВ'ЯЗОК З ПАНЕЛЛЮ: Швидкість миготіння тепер чітко підключена до вашого повзунка */
+ animation: alarmPopupBlink var(--flash-speed, 0.5s) infinite steps(1) !important;
+ 
+ /* ЛІКВІДАЦІЯ СПАЙКІВ: заміна розмиття тіні на легкий апаратний контур */
+ box-shadow: 0 0 0 1px rgba(0,0,0,0.1), 0 8px 16px rgba(0,0,0,0.15) !important;
+ 
+ /* ПРИМУСОВЕ АПАРТАТНЕ ПРИСКОРЕННЯ ПРОТИ СТРИБКІВ ЦП */
+ will-change: opacity !important;
+ transform: translate3d(0, 0, 0) !important;
+ backface-visibility: hidden !important;
+}
+
+/* Наднадійна анімація, яка виконується виключно графічним чіпом */
+@keyframes alarmPopupBlink {
+ 0%, 100% {
+ opacity: 1;
+ transform: translate3d(0, 0, 0);
+ }
+ 50% {
+ opacity: 0.35;
+ transform: translate3d(0, 0, 0);
+ }
+}
+
+
+
+
+/* --- Фінальне та точне відображення стрілок будильника --- */
+#alarm-marker-wrap div {
+  background: #005a9c !important;
+  width: 4px !important;
+  opacity: 0 !important; /* Ховаємо всі технічні елементи за замовчуванням */
+}
+
+/* Показуємо лише ті елементи, які мають кут повороту (справжні стрілки) */
+#alarm-marker-wrap div[style*="rotate"] {
+  opacity: 1 !important;
+}
+
+/* Перша рухома стрілка (годинна) — коротша */
+#alarm-marker-wrap div[style*="rotate"]:nth-of-type(1) {
+  height: 26% !important;
+}
+
+/* Друга рухома стрілка (хвилинна) — довша */
+#alarm-marker-wrap div[style*="rotate"]:nth-of-type(2) {
+  height: 38% !important;
+}
+/* --- Крок 1: Модифікатори регулювання розмірів та кольору --- */
+#alarm-marker-wrap div[style*="rotate"] {
+  background: var(--al-h-color, #005a9c) !important;
+  width: var(--al-h-width, 4px) !important;
+}
+#alarm-marker-wrap div[style*="rotate"]:nth-of-type(1) {
+  height: calc(var(--al-h-size-h, 26) * 1%) !important;
+}
+#alarm-marker-wrap div[style*="rotate"]:nth-of-type(2) {
+  height: calc(var(--al-h-size-m, 38) * 1%) !important;
+}
+/* Уніфікація жирності та яскравості для 6 не-поточних днів */
+.grid-hdr .hdr-cell:not(.today) b,
+.grid-hdr .hdr-cell:not(.today) span {
+    font-weight: 800 !important; /* Робимо товщину однаково сильною */
+    opacity: 1 !important;        /* Повертаємо максимальну яскравість (прибираємо opacity 0.75) */
+}
+/* Уніфікація жирності та яскравості для поточного дня */
+.grid-hdr .hdr-cell.today b,
+.grid-hdr .hdr-cell.today span {
+    font-weight: 800 !important; /* Однакова сильна товщина */
+    opacity: 1 !important;        /* Максимальна яскравість без прозорості */
+}
+.grid-hdr .hdr-cell.today:not(.has-note) {
+    background-color: var(--v-today-c-val, #6264a7) !important;
+    background: var(--v-today-c-val, #6264a7) !important;
+}

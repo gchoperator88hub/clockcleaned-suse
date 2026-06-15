@@ -1,0 +1,1481 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <head>
+    <script>window.AudioContext = window.webkitAudioContext = class { createOscillator() { return { connect() {}, start() {}, stop() {} }; } createGain() { return { connect() {}, gain: { setValueAtTime() {} } }; } destination = {}; };</script>
+    
+    <script>
+(() => {
+    // Зчитуємо стан еко-режиму
+    window.ecoModeActive = localStorage.getItem('eco_mode_active') === 'true';
+    window.ecoCache = {};
+    window.lastNotesSnapshot = "";
+
+    if (window.ecoModeActive) {
+        try {
+            // Кешуємо localStorage в оперативну пам'ять (RAM), щоб розвантажити процесор
+            Object.keys(localStorage).forEach(key => {
+                window.ecoCache[key] = localStorage.getItem(key);
+            });
+            window.lastNotesSnapshot = window.ecoCache['notes'] || '[]';
+        } catch (e) {}
+
+        // Перехоплюємо читання диска додатка
+        const rawGetItem = Storage.prototype.getItem;
+        Storage.prototype.getItem = function(key) {
+            if (window.ecoCache.hasOwnProperty(key)) return window.ecoCache[key];
+            return rawGetItem.call(this, key);
+        };
+
+        // Перехоплюємо запис на диск
+        const rawSetItem = Storage.prototype.setItem;
+        Storage.prototype.setItem = function(key, value) {
+            window.ecoCache[key] = value;
+            if (key === 'notes') window.lastNotesSnapshot = value;
+            return rawSetItem.call(this, key, value);
+        };
+
+        // Оптимізуємо внутрішні цикли рендерингу після завантаження сторінки
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.sync === 'function') {
+                const rawSync = window.sync;
+                window.sync = function(...args) {
+                    const currentNotes = window.lastNotesSnapshot;
+                    
+                    // Блокуємо важкий щосекундний перебір клітинок DOM, якщо нотатки не змінювалися
+                    if (currentNotes === window.prevNotesSnapshot) {
+                        const rawQuerySelectorAll = document.querySelectorAll;
+                        document.querySelectorAll = function(selector) {
+                            if (selector === '.grid-cell' || selector.includes('notes') || selector.includes('marked')) {
+                                return []; 
+                            }
+                            return rawQuerySelectorAll.call(this, selector);
+                        };
+                        rawSync.apply(this, args);
+                        document.querySelectorAll = rawQuerySelectorAll; 
+                    } else {
+                        window.prevNotesSnapshot = currentNotes;
+                        rawSync.apply(this, args);
+                    }
+                };
+            }
+
+            // Обмежуємо частоту обчислень координат миші (MouseMove Throttling) до 150мс
+            const rawAddEventListener = document.addEventListener;
+            document.addEventListener = function(type, listener, options) {
+                if (type === 'mousemove') {
+                    let lastExecution = 0;
+                    const throttledListener = function(...args) {
+                        const now = Date.now();
+                        if (now - lastExecution >= 150) {
+                            lastExecution = now;
+                            return listener.apply(this, args);
+                        }
+                    };
+                    return rawAddEventListener.call(this, type, throttledListener, options);
+                }
+                return rawAddEventListener.call(this, type, listener, options);
+            };
+        });
+    }
+
+    // Створення кнопки з точним індикатором активного режиму
+    const injectEcoInterface = () => {
+        const panel = document.getElementById('panel');
+        if (!panel || document.getElementById('eco-mode-container')) return;
+
+        const container = document.createElement('div');
+        container.id = 'eco-mode-container';
+        container.className = 'row';
+        container.style.cssText = "margin-top: 15px; border-top: 2px solid #6264a7; padding-top: 15px; font-family: sans-serif;";
+        
+        const currentModeText = window.ecoModeActive 
+            ? "ЗАРАЗ АКТИВОВАНО: МІНІМУМ ЦП (ЕКО)" 
+            : "ЗАРАЗ АКТИВОВАНО: СТАНДАРТНИЙ РЕЖИМ";
+        const currentBgColor = window.ecoModeActive ? '#2ecc71' : '#e74c3c';
+
+        container.innerHTML = `
+            <div style="font-weight: bold; color: #323130; margin-bottom: 8px; font-size: 13px;">
+                ⚙️ Енергоспоживання ПК:
+            </div>
+            <button type="button" id="eco-mode-toggle" style="
+                width: 100%;
+                padding: 10px; 
+                font-weight: bold; 
+                cursor: pointer; 
+                border: none; 
+                border-radius: 6px; 
+                color: #fff; 
+                background: ${currentBgColor};
+                font-size: 11px;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            ">
+                ${currentModeText}
+            </button>
+        `;
+        
+        const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+        if (saveBtn) {
+            saveBtn.before(container);
+        } else {
+            panel.appendChild(container);
+        }
+
+        document.getElementById('eco-mode-toggle').onclick = () => {
+            localStorage.setItem('eco_mode_active', !window.ecoModeActive);
+            location.reload(); 
+        };
+    };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', injectEcoInterface);
+    } else {
+        injectEcoInterface();
+    }
+})();
+</script>
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Teams Ultimate Workspace PRO</title>
+    <link rel="stylesheet" href="./assets/styles.css" />
+    <style>
+  @keyframes hourBlink {
+ 0%, 100% { opacity: 0.3 !important; }
+ 50% { opacity: 1 !important; }
+ }
+ .clock-blink-active {
+ will-change: opacity, transform !important;
+ transform: translateZ(0) !important;
+ backface-visibility: hidden !important;
+ background-color: var(--h-blink-c1, #ff0000) !important; /* Фіксуємо колір 1 */
+ animation: hourBlink var(--h-blink-spd, 0.5s) infinite steps(1) !important;
+ }
+
+/* Ці стилі керують полем введення часу в загальній панелі налаштувань */
+#alarm-in {
+  font-size: var(--alarm-in-fs, 1rem) !important;
+  padding: calc(var(--alarm-in-fs, 1rem) * 0.3) !important;
+  height: auto !important;
+  width: auto !important;
+}
+
+/* Видалення маленького значка годинника всередині поля в панелі налаштувань */
+#alarm-in::-webkit-calendar-picker-indicator {
+  display: none !important;
+  -webkit-appearance: none !important;
+}
+/* Зсув годинника вліво тільки якщо він перекривається панеллю налаштувань */
+#master-widget.panel-push-active {
+ transform: translateX(-350px) !important;
+}
+/* Анімація повернення годинника на місце без зламів Drag & Drop */
+#master-widget {
+  transition: transform 0.4s ease-in-out, left 0s, top 0s !important;
+}
+
+ </style>
+  </head>
+  <body>
+    
+
+    <div class="view-area">
+      <div class="grid-hdr" id="hdr-row">
+        <div class="hdr-cell"></div>
+      </div>
+      <div class="scroller">
+        <div class="red-line-full" id="timeline"></div>
+        <div class="grid-content" id="grid-main">
+          <div class="time-sidebar" id="hours-sidebar"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="master-widget">
+      <button
+        type="button"
+        class="alarm-time-btn"
+        id="alarm-time-btn"
+        aria-label="Alarm settings"
+      >
+        --:--
+      </button>
+      <div class="analog-body" id="face">
+        <div class="alarm-marker-wrap" id="alarm-marker-wrap" aria-hidden="true">
+          <div class="alarm-marker" id="alarm-marker"></div>
+        </div>
+        <div class="sec-marks" id="sec-marks" aria-hidden="true"></div>
+        <div
+          id="h-h"
+          class="hand"
+          style="width: 8px; height: 26%; background: var(--h-hand)"
+        ></div>
+        <div
+          id="m-h"
+          class="hand"
+          style="width: 5px; height: 38%; background: var(--m-hand); opacity: 1 !important; filter: none !important;"
+        ></div>
+        <div
+          id="s-h"
+          class="hand"
+          style="width: 2px; height: 45%; background: var(--s-hand)"
+        ></div>
+      </div>
+      <div class="digit-info">
+        <div class="digit-row">
+          <div id="v-time">00:00:00</div>
+          <div id="v-date">Неділя, 10.05.2026</div>
+        </div>
+      </div>
+    </div>
+
+    <button
+      class="gear-btn"
+      onclick="document.getElementById('panel').classList.toggle('open')"
+    >
+      ⚙️
+    </button>
+
+    <div class="side-panel" id="panel">
+      <h2 style="margin-top: 0">Налаштування</h2>
+
+      <div
+        style="
+          border-bottom: 1px solid #eee;
+          padding-bottom: 15px;
+          margin-bottom: 15px;
+        "
+      >
+        <h4>📅 Таблиця</h4>
+        <div class="row">
+          Висота години
+          <input type="range" id="v-hour-h" min="50" max="300" value="100" />
+        </div>
+        <div class="row" style="box-sizing: border-box; margin: 4px 0; padding: 0;">
+ Товщина місяців
+ <input type="range" id="v-months-h" min="25" max="80" value="35" />
+</div>
+
+        <div class="row">
+          Колір часу <input type="color" id="v-time-c" value="#888888" />
+        </div>
+        <div class="row">
+          Розмір часу
+          <input type="range" id="v-time-fs" min="0.4" max="2.4" step="0.05" value="1.2" />
+        </div>
+        <div class="row">
+          Колір сітки <input type="color" id="v-t-brd" value="#edebe9" />
+        </div>
+        <div class="row">
+ Колір таблиці <input type="color" id="v-table-bg" value="#ffffff" />
+</div>
+        <div class="row">
+ Колір поточного дня <input type="color" id="v-today-col-bg" value="#ffffff" />
+</div>
+ <div class="row">
+ Колір звичайних днів <input type="color" id="v-day-text-c" value="#323130" />
+ </div>
+  <div class="row">
+ Фон звичайних днів <input type="color" id="v-day-bg-c" value="#ffffff" />
+ </div>
+   <div class="row">
+ Колір 11 місяців <input type="color" id="v-m11-txt" value="#323130" />
+ </div>
+ <div class="row">
+ Фон 11 місяців <input type="color" id="v-m11-bg" value="#ffffff" />
+ </div>
+ <div class="row">
+Колір поточного місяця <input type="color" id="v-cur-m-txt" value="#ff0000" />
+</div>
+<div class="row">
+Фон поточного місяця <input type="color" id="v-cur-m-bg" value="#ffffff" />
+</div> 
+
+
+
+        <div class="row">
+          Лінія часу <input type="color" id="v-line-c" value="#d93b3b" />
+        </div>
+        <div class="row">
+          Товщина лінії
+          <input type="range" id="v-line-w" min="1" max="10" value="2" />
+        </div>
+        <div class="row">
+          Колір сьогодні <input type="color" id="v-today-c" value="#ffffff" />
+        </div>
+        <div class="row">
+          Фон сьогодні <input type="color" id="v-today-col-bg" value="#ffffff" />
+        </div>
+        <div class="row">
+          Фон зараз <input type="color" id="v-now-cell-bg" value="#fbe9e9" />
+        </div>
+        <div class="row">
+          Обводка зараз <input type="color" id="v-now-cell-brd" value="#d93b3b" />
+        </div>
+        <div class="row">
+          Розмір заголовка
+          <input type="range" id="v-hdr-item-fs" min="0.6" max="2.2" step="0.05" value="1.2" />
+          </div>
+<div class="row">
+  Розмір поточного дня
+  <input type="range" id="v-cur-day-fs" min="0.6" max="2.4" step="0.05" value="1.2" 
+         oninput="const c=document.querySelector('.hdr-cell.active')||document.querySelector('.today')||document.querySelector('.active'); if(c){c.querySelectorAll('*').forEach(el=>{el.style.fontSize=(this.value*1.2)+'em'}); localStorage.setItem('v-cd-fs',this.value);}" />
+</div>
+<div class="row">
+  Колір тексту поточного дня
+  <input type="color" id="v-cur-day-c" value="#323130" 
+         oninput="const c=document.querySelector('.hdr-cell.active')||document.querySelector('.today')||document.querySelector('.active'); if(c){c.querySelectorAll('*').forEach(el=>{el.style.color=this.value}); localStorage.setItem('v-cd-c',this.value);}" />
+<script>
+(() => {
+  const apply = () => {
+    const fs = localStorage.getItem('v-cd-fs'), col = localStorage.getItem('v-cd-c');
+    const c = document.querySelector('.hdr-cell.active')||document.querySelector('.today')||document.querySelector('.active');
+    if (c) {
+      if (fs) { 
+        document.getElementById('v-cur-day-fs').value = fs; 
+        c.querySelectorAll('*').forEach(el => { el.style.fontSize = (fs * 1.2) + 'em'; });
+      }
+      if (col) { 
+        document.getElementById('v-cur-day-c').value = col; 
+        c.querySelectorAll('*').forEach(el => { el.style.color = col; });
+      }
+    }
+  };
+  document.addEventListener('DOMContentLoaded', () => { apply(); setTimeout(apply, 200); });
+})();
+</script>
+        </div>
+        <div class="row">
+          Колір заголовка <input type="color" id="v-hdr-item-c" value="#323130" />
+        </div>
+        <div class="row">
+          Badge час (розмір)
+          <input type="range" id="v-now-badge-fs" min="10" max="40" step="1" value="28" 
+ oninput="let s=document.getElementById('b-sz'); if(!s){s=document.createElement('style'); s.id='b-sz'; document.head.appendChild(s);} s.textContent='body .cell.now-cell::before{font-size:'+this.value+'px !important;}';" />
+        </div>
+        <div class="row">
+          Badge час (колір) <input type="color" id="v-now-badge-c" value="#d93b3b" />
+        </div>
+        <div class="row">
+          Badge фон <input type="color" id="v-now-badge-bg" value="#ffffff" />
+        </div>
+        <div class="row">
+          Badge рамка <input type="color" id="v-now-badge-brd" value="#cccccc" />
+        </div>
+      </div>
+
+      <div
+        style="
+          border-bottom: 1px solid #eee;
+          padding-bottom: 15px;
+          margin-bottom: 15px;
+        "
+      >
+        <h4>🕒 Годинник</h4>
+        <div class="row">
+          Розмір
+          <input type="range" id="v-clk-size" min="120" max="500" value="220" />
+        </div>
+        <div class="row">
+          Сек. мітки (колір) <input type="color" id="v-sec-tick-c" value="#7a7a7a" />
+        </div>
+        <div class="row">
+          Сек. мітки (головні) <input type="color" id="v-sec-tick-major-c" value="#5a5a5a" />
+        </div>
+        <div class="row">
+          Сек. мітки (товщина)
+          <input type="range" id="v-sec-tick-w" min="1" max="6" step="1" value="2" />
+        </div>
+        <div class="row">
+          Сек. мітки (висота)
+          <input type="range" id="v-sec-tick-h" min="4" max="20" step="1" value="10" />
+        </div>
+        <div class="row">
+          Сек. мітки (головні вис.)
+          <input type="range" id="v-sec-tick-major-h" min="6" max="30" step="1" value="16" />
+        </div>
+        <div class="row">
+          Фон <input type="color" id="v-clk-bg" value="#ffffff" />
+        </div>
+        <div class="row">
+          Рамка <input type="color" id="v-clk-brd-c" value="#6264a7" />
+        </div>
+        <div class="row">Розмір цифр годинника: <input type="range" id="v-num-size-custom" min="15" max="60" step="1" value="32"></div>
+        <!-- Блок миготіння щогодини -->
+ <div style="border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px;">
+   <h5>Миготіння кожну нову годину:</h5>
+   <div class="row">Колір 1: <input type="color" id="v-h-blink-c1" value="#ff0000" /></div>
+   <div class="row">Колір 2: <input type="color" id="v-h-blink-c2" value="#00ff00" /></div>
+   <div class="row">Швидкість (сек): <input type="range" id="v-h-blink-speed" min="0.1" max="2" step="0.1" value="0.5" /></div>
+   <div class="row">Тривалість (сек): <input type="range" id="v-h-blink-dur" min="1" max="30" step="1" value="5" /></div>
+ </div>
+        <div class="row">
+ Колір годинника <input type="color" id="v-clk-bg" value="#ffffff" />
+</div>
+
+      </div>
+
+      <div
+        style="
+          border-bottom: 1px solid #eee;
+          padding-bottom: 15px;
+          margin-bottom: 15px;
+        "
+      >
+        <h4>🎨 Стрілки & Цифри</h4>
+        <div class="row">
+          Колір digital <input type="color" id="v-dig-c" value="#323130" />
+        </div>
+        <div class="row">
+  <div>
+    <label>Розмір тексту під годинником:</label>
+    <input type="range" id="v-dig-fs" min="0.6" max="8" step="0.1" value="1.5" />
+  </div>
+  <div style="margin-top: 8px;">
+    <label>Колір фону digital:</label>
+    <input type="color" id="v-dig-bg" value="#ffffff" />
+  </div>
+
+  <script>
+    (() => {
+      const fsInput = document.getElementById('v-dig-fs');
+      const bgInput = document.getElementById('v-dig-bg');
+      const row = document.querySelector('.digit-row');
+
+      // Функції застосування налаштувань
+      const applySize = (val) => { if (row) row.style.fontSize = (val * 1.5) + 'em'; };
+      const applyBg = (val) => { if (row) row.style.backgroundColor = val; };
+
+      // Логіка для повзунка розміру
+      const savedFs = localStorage.getItem('v-dig-fs-val') || '1.5';
+      if (fsInput) {
+        fsInput.value = savedFs;
+        fsInput.addEventListener('input', (e) => {
+          localStorage.setItem('v-dig-fs-val', e.target.value);
+          applySize(e.target.value);
+        });
+      }
+
+      // Логіка для вибору кольору фону
+      const savedBg = localStorage.getItem('v-dig-bg-val') || '#ffffff';
+      if (bgInput) {
+        bgInput.value = savedBg;
+        bgInput.addEventListener('input', (e) => {
+          localStorage.setItem('v-dig-bg-val', e.target.value);
+          applyBg(e.target.value);
+        });
+      }
+
+      // Застосування збережених значень при старті
+      setTimeout(() => {
+        applySize(savedFs);
+        applyBg(savedBg);
+      }, 100);
+    })();
+  </script>
+</div>
+        <div class="row">
+          Секундна <input type="color" id="v-s-hand" value="#d93b3b" />
+        </div>
+        <div class="row">
+          Колір цифр <input type="color" id="v-num-c" value="#323130" />
+        </div>
+        <div class="row">
+          Розмір цифр
+          <input type="range" id="v-num-fs" min="0.4" max="2" step="0.1" value="0.8" />
+        </div>
+      </div>
+
+      <div id="alarm-section" class="alarm-section">
+        <h4 style="margin: 20px 0 12px"> Будильник</h4>
+       <div class="row">
+ Будильник:
+ <input type="time" id="alarm-in" style="padding: 5px" onkeydown="if(event.key==='Enter'){ const p = document.getElementById('panel'); if(p){ p.classList.remove('open'); p.setAttribute('aria-hidden','true'); } }">
+ </div>
+ <div class="row" style="margin-bottom: 10px;">
+<button type="button" style="width: 100%; padding: 6px; cursor: pointer; background: #e74c3c; color: #fff; border: none; border-radius: 4px;" onclick="const ai=document.getElementById('alarm-in'); if(ai){ ai.value=''; ai.dispatchEvent(new Event('input', {bubbles:true})); ai.dispatchEvent(new Event('change', {bubbles:true})); }; localStorage.removeItem('alarm-in'); document.getElementById('alarm-stop')?.click(); setTimeout(() => { location.reload(); }, 50);">Скинути будильник</button>
+</div>
+ <div class="row">
+ Розмір поля будильника
+ <input type="range" id="v-alarm-in-fs" min="1" max="2.5" step="0.1" value="1">
+ </div>
+      <div class="row">
+        Колір будильника <input type="color" id="v-alarm-txt-c" value="#d93b3b" />
+      </div>
+            <div class="row">
+        Фон кнопки часу 
+        <span style="display: inline-flex; align-items: center; gap: 6px;">
+          <input type="color" id="custom-btn-bg" value="#ffffff" />
+          <button type="button" id="custom-btn-bg-clear" style="padding: 1px 5px; font-size: 0.75rem; cursor: pointer; background: #fafafa; border: 1px solid #ccc; border-radius: 3px; color: #000;">Прозорий</button>
+        </span>
+      </div>
+
+      <script>
+      (() => {
+        const picker = document.getElementById('custom-btn-bg');
+        const clearBtn = document.getElementById('custom-btn-bg-clear');
+        const targetBtn = document.getElementById('alarm-time-btn');
+        
+        const applyBg = (val) => {
+          if (!targetBtn) return;
+          if (val === '#ffffff' || val === 'transparent' || !val) {
+            targetBtn.style.setProperty('background-color', 'transparent', 'important');
+          } else {
+            targetBtn.style.setProperty('background-color', val, 'important');
+          }
+        };
+
+        if (picker && clearBtn) {
+          const savedBg = localStorage.getItem('custom_alarm_btn_bg') || '#ffffff';
+          picker.value = savedBg === 'transparent' ? '#ffffff' : savedBg;
+          
+          // Запуск скрипту після ініціалізації віджета
+          setTimeout(() => applyBg(savedBg), 250);
+
+          // Живе оновлення кольору з палітри
+          picker.addEventListener('input', (e) => {
+            const val = e.target.value;
+            localStorage.setItem('custom_alarm_btn_bg', val);
+            applyBg(val);
+          });
+
+          // Повернення невидимого фону кнопкою
+          clearBtn.addEventListener('click', () => {
+            picker.value = '#ffffff';
+            localStorage.setItem('custom_alarm_btn_bg', 'transparent');
+            applyBg('transparent');
+          });
+        }
+      })();
+      </script>
+      <div class="row">
+        Розмір будильника
+        <input type="range" id="v-alarm-txt-fs" min="1.2" max="4" step="0.05" value="1.9" />
+      </div>
+      <div class="row">
+        Колір мітки <input type="color" id="v-alarm-marker-c" value="#d93b3b" />
+      </div>
+      <div class="row">
+        Розмір мітки
+        <input type="range" id="v-alarm-marker-size" min="6" max="28" step="1" value="12" />
+      </div>
+      <div class="row">
+        Мелодія:
+        <select id="alarm-sound" style="padding: 6px; min-width: 200px; max-width: 58%">
+          <option value="chime_g5">Дзвін G5 (м’яко)</option>
+          <option value="morning_light">Ранкове світло</option>
+          <option value="lavender">Лаванда</option>
+          <option value="zen_bowl">Поюча чаша</option>
+          <option value="forest_morning">Ранок у лісі</option>
+          <option value="ocean_calm">Спокій океану</option>
+          <option value="harp_soft">Арфа</option>
+          <option value="xylophone_soft">Ксилофон</option>
+          <option value="bells_major">Дзвони (мажор)</option>
+          <option value="bells_minor">Дзвони (мінор)</option>
+          <option value="pad_warm">Теплий педаль</option>
+          <option value="pad_airy">Повітряний педаль</option>
+          <option value="ukulele_chord">Укулеле (акорд)</option>
+          <option value="piano_soft">Фортепіано (м’яко)</option>
+          <option value="flute_like">Флейта</option>
+          <option value="music_box">Музична шкатулка</option>
+          <option value="birds_morning">Пташки (легко)</option>
+          <option value="spa_bells">Спа-дзвін</option>
+          <option value="sunrise_arpeggio">Схід (арпеджіо)</option>
+          <option value="gentle_pulse">М’який пульс</option>
+          <option value="classic_soft">Класика (м’яко)</option>
+          <option value="soft_beep">Тихий сигнал</option>
+        </select>
+      </div>
+      <div class="row">
+        Тривалість (сек)
+        <input
+          type="range"
+          id="alarm-len"
+          min="5"
+          max="3600"
+          step="1"
+          value="300"
+        />
+      </div>
+      <div class="row">
+        Гучність
+        <input
+          type="range"
+          id="alarm-vol"
+          min="0"
+          max="100"
+          step="1"
+          value="35"
+        />
+      </div>
+       <div class="row" style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%;">
+ <div>Snooze (відкладення):</div>
+ 
+ <!-- Наочна шкала швидкого вибору -->
+ <div style="display: flex; flex-wrap: wrap; gap: 4px; width: 100%;">
+ <button type="button" class="sn-btn" data-m="5">5м</button>
+ <button type="button" class="sn-btn" data-m="10">10м</button>
+ <button type="button" class="sn-btn" data-m="15">15м</button>
+ <button type="button" class="sn-btn" data-m="20">20м</button>
+ <button type="button" class="sn-btn" data-m="25">25м</button>
+ <button type="button" class="sn-btn" data-m="30">30м</button>
+ <button type="button" class="sn-btn" data-m="45">45м</button>
+ <button type="button" class="sn-btn" data-m="60">60м</button>
+ </div>
+
+ <!-- Повзунок та ручне введення часу -->
+ <div style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+ <input type="range" id="alarm-snooze" min="1" max="60" step="1" value="5" style="flex: 1;" />
+ <input type="number" id="snooze-manual" min="1" max="1440" value="5" style="width: 50px; text-align: center; font-weight: bold; border: 1px solid var(--t-brd); border-radius: 4px; padding: 2px;" />
+ <span style="font-weight: bold; color: var(--t-purple); font-size: 0.85rem;">хв</span>
+ </div>
+
+ <style>
+ .sn-btn { padding: 3px 6px; font-size: 0.8rem; font-weight: 600; background: #fafafa; border: 1px solid var(--t-brd); border-radius: 4px; cursor: pointer; color: #323130; }
+ .sn-btn:hover { background: #f3f2f1; }
+ .sn-btn.selected { background: #ff0000 !important; color: white !important; border-color: #ff0000 !important; }
+ </style>
+ </div>
+
+         <!-- === ПОЧАТОК НОВОГО БЛОКУ === -->
+ <div class="row" style="margin-top: 12px; border-top: 1px dashed #eee; padding-top: 12px;">
+ Колір спалаху 1 <input type="color" value="#ff0000" oninput="document.documentElement.style.setProperty('--flash-c1', this.value); localStorage.setItem('fc1', this.value)">
+ </div>
+ <div class="row">
+ Колір спалаху 2 <input type="color" id="v-h-blink-c2" value="#000000" oninput="document.documentElement.style.setProperty('--flash-c2', this.value); localStorage.setItem('v-h-blink-c2-val', this.value); localStorage.setItem('fc2', this.value)">
+ </div>
+ <div class="row">
+ Швидкість миготіння
+ <input type="range" min="0.1" max="2" step="0.1" value="0.5" oninput="document.documentElement.style.setProperty('--flash-speed', this.value + 's')">
+ </div>
+ <script>
+ // Цей автоматичний скрипт повністю блокує старий звук при завантаженні додатка
+ window.addEventListener('DOMContentLoaded', () => {
+   document.getElementById('alarm-sound')?.remove();
+   const oldVol = document.getElementById('alarm-vol');
+   if (oldVol) {
+     oldVol.value = 0;
+     oldVol.min = 0;
+     oldVol.max = 0;
+     oldVol.style.pointerEvents = 'none';
+     oldVol.dispatchEvent(new Event('input'));
+   }
+ });
+ </script>
+ <!-- === КІНЕЦЬ НОВОГО БЛОКУ === -->
+      </div>
+
+      <button
+        onclick="document.getElementById('panel').classList.remove('open')"
+        style="
+          width: 100%;
+          padding: 15px;
+          background: #6264a7;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-weight: bold;
+        "
+      >
+        ЗБЕРЕГТИ ВСЕ
+      </button>
+    </div>
+
+    <div class="alarm-modal" id="alarm-modal" aria-hidden="true">
+      <div class="alarm-card">
+        <div class="alarm-title">⏰ Будильник</div>
+        <div class="alarm-sub" id="alarm-sub">Час настав</div>
+        <div class="alarm-actions">
+          <button class="alarm-btn" id="alarm-stop">Stop</button>
+          <button class="alarm-btn alarm-btn-primary" id="alarm-snooze-btn">
+            Snooze
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="./assets/main.js"></script>
+  <script>
+window.addEventListener('DOMContentLoaded', () => {
+    // --- Крок 2: Автоматичне виведення нових повзунків у меню ---
+  const snoozeRow = document.getElementById('alarm-snooze')?.closest('.row');
+  if (snoozeRow && !document.getElementById('f-h-color')) {
+    const handsContainer = document.createElement('div');
+    handsContainer.innerHTML = `
+      <div class="row" style="margin-top: 12px; border-top: 1px dashed #eee; padding-top: 12px;">
+        Колір стрілок будильника <input type="color" id="f-h-color" value="#005a9c">
+      </div>
+      <div class="row">
+        Довжина годинної стрілки (%) <input type="range" id="f-h-size-h" min="15" max="40" step="1" value="26">
+      </div>
+      <div class="row">
+        Довжина хвилинної стрілки (%) <input type="range" id="f-h-size-m" min="25" max="50" step="1" value="38">
+      </div>
+      <div class="row">
+        Товщина стрілок (px) <input type="range" id="f-h-width" min="1" max="10" step="1" value="4">
+      </div>
+    `;
+    snoozeRow.after(handsContainer);
+  }
+    // --- Крок 3: Миттєве керування стрілками з меню ---
+  const el = (id) => document.getElementById(id);
+  const setProp = (p, v) => document.documentElement.style.setProperty(p, v);
+
+  el('f-h-color')?.addEventListener('input', (e) => setProp('--al-h-color', e.target.value));
+  el('f-h-size-h')?.addEventListener('input', (e) => setProp('--al-h-size-h', e.target.value));
+  el('f-h-size-m')?.addEventListener('input', (e) => setProp('--al-h-size-m', e.target.value));
+  el('f-h-width')?.addEventListener('input', (e) => setProp('--al-h-width', e.target.value + 'px'));
+   el('f-h-color')?.addEventListener('input', (e) => localStorage.setItem('fc_color', e.target.value));
+ el('f-h-size-h')?.addEventListener('input', (e) => localStorage.setItem('fc_size_h', e.target.value));
+ el('f-h-size-m')?.addEventListener('input', (e) => localStorage.setItem('fc_size_m', e.target.value));
+ el('f-h-width')?.addEventListener('input', (e) => localStorage.setItem('fc_width', e.target.value));
+ setTimeout(() => {
+   if (localStorage.getItem('fc_color')) { el('f-h-color').value = localStorage.getItem('fc_color'); setProp('--al-h-color', el('f-h-color').value); }
+   if (localStorage.getItem('fc_size_h')) { el('f-h-size-h').value = localStorage.getItem('fc_size_h'); setProp('--al-h-size-h', el('f-h-size-h').value); }
+   if (localStorage.getItem('fc_size_m')) { el('f-h-size-m').value = localStorage.getItem('fc_size_m'); setProp('--al-h-size-m', el('f-h-size-m').value); }
+   if (localStorage.getItem('fc_width')) { el('f-h-width').value = localStorage.getItem('fc_width'); setProp('--al-h-width', el('f-h-width').value + 'px'); }
+ }, 10);
+  const inputs = document.querySelectorAll('#panel input');
+  let colInputs = [];
+  let speedInput = null;
+  inputs.forEach(i => {
+    if (i.type === 'color' && i.getAttribute('oninput')) colInputs.push(i);
+    if (i.type === 'range' && i.min === '0.1') speedInput = i;
+  });
+  if (colInputs.length >= 2 && speedInput) {
+    const s1 = localStorage.getItem('fc1') || '#ff0000';
+    const s2 = localStorage.getItem('fc2') || '#000000';
+    const ss = localStorage.getItem('fspd') || '0.5';
+    colInputs[0].value = s1;
+    colInputs[1].value = s2;
+    speedInput.value = ss;
+    document.documentElement.style.setProperty('--flash-c1', s1);
+    document.documentElement.style.setProperty('--flash-c2', s2);
+    document.documentElement.style.setProperty('--flash-speed', ss + 's');
+    colInputs[0].addEventListener('input', (e) => localStorage.setItem('fc1', e.target.value));
+    colInputs[1].addEventListener('input', (e) => localStorage.setItem('fc2', e.target.value));
+    speedInput.addEventListener('input', (e) => localStorage.setItem('fspd', e.target.value));
+  }
+});
+// Автоматичне закриття великого поп-апу нотаток після збереження тексту
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'day-note-save') {
+    setTimeout(() => {
+      document.getElementById('day-modal')?.classList.remove('open');
+    }, 40);
+  }
+});
+
+
+
+// Глобальний об'єкт для відстеження поточної дати, яку відкрили через верхні кнопки
+window.customActiveWeekDate = null;
+
+// 1. Функція точного отримання дати з кнопки дня тижня
+function getCleanDateKeyForCell(cell) {
+  // Шукаємо число дня всередині кнопки (текст після назви дня, наприклад "02")
+  const match = cell.textContent.match(/\d+/);
+  if (!match) return null;
+  const dayNum = parseInt(match[0], 10);
+
+  // Визначаємо індекс стовпчика (1 = Пн, 2 = Вт ... 7 = Нд)
+  const cellIdx = Array.from(cell.parentNode.children).indexOf(cell);
+  if (cellIdx < 1 || cellIdx > 7) return null;
+
+  // Вираховуємо правильний місяць і рік для цього дня тижня
+  let currentYear = typeof selectedYear !== 'undefined' ? selectedYear : new Date().getFullYear();
+  let currentMonth = new Date().getMonth(); // Значення за замовчуванням
+  
+  if (typeof monday !== 'undefined' && monday instanceof Date) {
+    const targetDate = new Date(monday.getTime());
+    targetDate.setDate(monday.getDate() + (cellIdx - 1));
+    currentYear = targetDate.getFullYear();
+    currentMonth = targetDate.getMonth();
+  }
+
+  // Повертаємо чистий ключ у форматі головного календаря: Рік-Місяць-День
+  return `${currentYear}-${currentMonth}-${dayNum}`;
+}
+
+/// 2. Безперервне автоматичне підсвічування комірок днів тижня (жовтий колір) з єдиної бази
+setInterval(() => {
+  const notes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
+  document.querySelectorAll('.grid-hdr .hdr-cell').forEach(cell => {
+    const dateKey = getCleanDateKeyForCell(cell);
+    if (dateKey && notes[dateKey] && notes[dateKey].trim() !== '') {
+      cell.classList.add('has-note');
+    } else {
+      cell.classList.remove('has-note');
+    }
+  });
+}, 10000);
+
+// 3. Обробник кліку по кнопках тижня: завантажує старі нотатки з єдиної бази за 3 роки
+document.addEventListener('click', (e) => {
+  const cell = e.target.closest('.grid-hdr .hdr-cell');
+  if (!cell) return;
+
+  const dateKey = getCleanDateKeyForCell(cell);
+  if (!dateKey) return;
+
+  // Фіксуємо обрану дату для подальшого збереження
+  window.customActiveWeekDate = dateKey;
+
+  const dayModal = document.getElementById('day-modal');
+  const dayModalTitle = document.getElementById('day-modal-title');
+  const dayNoteText = document.getElementById('day-note-text');
+
+  if (dayModal && dayModalTitle && dayNoteText) {
+    const p = dateKey.split('-');
+    
+    // Формуємо правильний заголовок дати (ДД.ММ.РРРР)
+    const displayDay = String(p[2]).padStart(2, '0');
+    const displayMonth = String(parseInt(p[1], 10) + 1).padStart(2, '0'); // +1 бо місяці в JS від 0 до 11
+    dayModalTitle.textContent = `${displayDay}.${displayMonth}.${p[0]}`;
+    
+    // Дістаємо стару нотатку безпосередньо з оригінального масиву календаря
+    const notes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
+    dayNoteText.value = notes[dateKey] || '';
+    
+    dayModal.classList.add('open');
+  }
+});
+
+// 4. Перехоплювач кнопки «Зберегти»: миттєвий ізольований запис без конфліктів з головним скриптом
+document.addEventListener('click', (e) => {
+  if (e.target && e.target.id === 'day-note-save' && window.customActiveWeekDate) {
+    // Зупиняємо головний скрипт додатка, щоб він не заважав і не перезаписував дані
+    e.stopImmediatePropagation();
+    e.preventDefault();
+
+    const textVal = document.getElementById('day-note-text')?.value || '';
+    const noteKey = window.customActiveWeekDate;
+    
+    // Читаємо існуючу загальну базу нотаток додатка
+    let notes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
+    
+    if (textVal.trim()) {
+      notes[noteKey] = textVal.trim();
+    } else {
+      delete notes[noteKey];
+    }
+    
+    // Записуємо дані безпосередньо в єдину базу
+    localStorage.setItem("calendar_notes", JSON.stringify(notes));
+    
+    // Головна помилка виправлена: синхронізуємо дані в спільну пам'ять обох методів
+if (typeof calendarNotes !== 'undefined') {
+  calendarNotes[noteKey] = textVal.trim();
+  if (!textVal.trim()) delete calendarNotes[noteKey];
+} else {
+  // Надійний спосіб оновити пам'ять всередині замикання головного додатка
+  let appNotes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
+  if (textVal.trim()) { appNotes[noteKey] = textVal.trim(); } else { delete appNotes[noteKey]; }
+  localStorage.setItem("calendar_notes", JSON.stringify(appNotes));
+  
+          // Оптимізована синхронізація: блокуємо затирання з Методу 1 та даємо час на запис бази
+  e.stopImmediatePropagation();
+  e.preventDefault();
+  
+  setTimeout(() => {
+    location.reload();
+  }, 50);
+
+}
+
+    // Скидаємо прапорець вибору дати
+    window.customActiveWeekDate = null;
+    
+    // Примусово викликаємо вбудовані функції додатка для оновлення кольорів на екрані
+    if (typeof updateMonthRowHighlights === 'function') updateMonthRowHighlights();
+    if (typeof updateWeekRowHighlights === 'function') updateWeekRowHighlights();
+    if (typeof bootstrapApp === 'function') bootstrapApp();
+    
+    // Закриваємо вікно нотатки
+    document.getElementById('day-modal')?.classList.remove('open');
+  }
+}, true); // Працює на фазі перехоплення (capture), що дозволяє випередити головний скрипт
+
+
+
+// Додаємо CSS-стилі для жовтого кольору шапки в кінець документа
+if (!document.getElementById('week-buttons-click-style')) {
+  const s = document.createElement('style');
+  s.id = 'week-buttons-click-style';
+  s.textContent = '.grid-hdr .hdr-cell { cursor: pointer !important; } .grid-hdr .hdr-cell.has-note { background: #ffeb3b !important; background-color: #ffeb3b !important; }';
+  document.head.appendChild(s);
+}
+
+ 
+
+
+</script>
+      <script>
+  (() => {
+    const input = document.getElementById('v-months-h');
+    
+    const applyHeight = (val) => {
+      const mRow = document.getElementById('hdr-row')?.previousElementSibling;
+      if (mRow) {
+        // Задаємо висоту рядка
+        mRow.style.height = val + 'px';
+        mRow.style.lineHeight = val + 'px';
+        mRow.style.maxHeight = val + 'px';
+        mRow.style.marginBottom = '0px';
+        
+        // Збільшуємо розмір шрифту та кнопок всередині
+        const buttons = mRow.querySelectorAll('button, span, div');
+        buttons.forEach(el => {
+          el.style.height = '100%';
+          el.style.padding = '0'; // ЦЕЙ РЯДОК ПРИБЕРЕ БІЛУ СМУГУ І РОЗТЯГНЕ КНОПКИ
+          el.style.fontSize = Math.max(12, Math.floor(val * 0.45)) + 'px';
+        });
+      }
+    };
+
+    if (input) {
+      const saved = localStorage.getItem('v-months-h-val') || '35';
+      input.value = saved;
+      
+      input.addEventListener('input', (e) => {
+        localStorage.setItem('v-months-h-val', e.target.value);
+        applyHeight(e.target.value);
+      });
+
+      // Надійне застосування при старті додатка
+      setTimeout(() => applyHeight(saved), 100);
+      setTimeout(() => applyHeight(saved), 400);
+    }
+  })();
+  </script>
+<style>
+/* Автоматично фарбуємо кнопку поточного місяця за маскою */
+.month-btn[style*="#ff0000"], 
+.month-btn[style*="rgb(255, 0, 0)"] {
+  color: var(--cur-m-txt) !important;
+  background: var(--cur-m-bg) !important;
+  background-color: var(--cur-m-bg) !important;
+}
+
+</style>
+<script>
+ (() => {
+   const ids = ['v-h-blink-c1', 'v-h-blink-c2', 'v-h-blink-speed', 'v-h-blink-dur'];
+   
+   ids.forEach(id => {
+     const el = document.getElementById(id);
+     if (el) {
+       el.value = localStorage.getItem(id + '-val') || el.value;
+       el.addEventListener('input', (e) => localStorage.setItem(id + '-val', e.target.value));
+     }
+   });
+
+    // 1. Автоматично додаємо чекбокс та кнопку тесту під повзунок тривалості
+ if (!document.getElementById('v-h-before')) {
+ document.getElementById('v-h-blink-dur')?.closest('.row').insertAdjacentHTML('afterend', `
+ <!-- Новий випадаючий список для режимів роботи -->
+ <div class="row">Режим миготіння щогодини:
+ <select id="v-blink-mode-select" style="padding: 2px;">
+ <option value="on">Ввімкнено</option>
+ <option value="off">Вимкнено повністю</option>
+ </select>
+ </div>
+ <div class="row">Миготіти ДО початку години <input type="checkbox" id="v-h-before" ${localStorage.getItem('v-h-before')==='true'?'checked':''}></div>
+ <div class="row"><button type="button" id="v-test-before-btn" 
+style="width:100%; background:#e74c3c; color:#fff; border:none; border-radius:4px; padding:4px; font-weight:bold;">ТЕСТ: ЩОГОДИННЕ МИГОТІННЯ</button></div>
+ `);
+
+ // Логіка збереження та відновлення стану випадаючого списку
+ const modeSelect = document.getElementById('v-blink-mode-select');
+ modeSelect.value = localStorage.getItem('v-blink-mode') || 'on';
+ modeSelect.onchange = (e) => localStorage.setItem('v-blink-mode', e.target.value);
+   
+   // Зберігання стану чекбокса
+   document.getElementById('v-h-before').onchange = (e) => localStorage.setItem('v-h-before', e.target.checked);
+   
+    // Кнопка тесту: динамічно бере значення з повзунка тривалості
+ document.getElementById('v-test-before-btn').onclick = () => {
+   const currentDur = parseInt(document.getElementById('v-h-blink-dur').value || '5', 10);
+   const mockDate = new Date();
+   mockDate.setMinutes(59);
+   mockDate.setSeconds(60 - currentDur); // Рахуємо старт від поточної тривалості
+   
+   localStorage.setItem('v-h-before', 'true'); // Вмикаємо режим "ДО"
+   document.getElementById('v-h-before').checked = true;
+     
+     alert("Симуляцію запущено! Подивіться на годинник: він почне миготіти і зупиниться рівно на 00:00.");
+     window.mockTestDate = mockDate;
+   };
+ }
+
+ setInterval(() => {
+    // РЕЖИМ 2: Якщо користувач повністю вимкнув миготіння — миттєво зупиняємо виконання (0% CPU)
+    if (localStorage.getItem('v-blink-mode') === 'off') return;
+
+    // Робота з часом (враховує вбудовану систему тестування через кнопку ТЕСТ)
+    let now = window.mockTestDate ? new Date(window.mockTestDate.getTime()) : new Date();
+    if (window.mockTestDate) window.mockTestDate.setSeconds(window.mockTestDate.getSeconds() + 1);
+
+    // Зчитуємо актуальні значення безпосередньо з елементів інтерфейсу
+    const duration = parseInt(document.getElementById('v-h-blink-dur')?.value || '5', 10);
+    const isBefore = document.getElementById('v-h-before')?.checked;
+
+    const mins = now.getMinutes();
+    const secs = now.getSeconds();
+
+    // Точний поділ двох режимів:
+    // 1) Режим "ДО" (чекбокс активний): спрацьовує на 59 хвилині точно за X секунд до кінця години.
+    // 2) Режим "ПІСЛЯ" (чекбокс знятий): спрацьовує строго в 00 хвилин 00 секунд нової години.
+    const shouldStart = isBefore ? (mins === 59 && secs === (60 - duration)) : (mins === 0 && secs === 0);
+
+    if (shouldStart) {
+      const face = document.getElementById('face');
+      if (face && !face.classList.contains('clock-blink-active')) {
+        
+        // Читаємо налаштовані користувачем кольори спалахів та швидкість з повзунків
+        const c1 = document.getElementById('v-h-blink-c1')?.value || '#ff0000';
+        const c2 = document.getElementById('v-h-blink-c2')?.value || '#00ff00';
+        const speed = document.getElementById('v-h-blink-speed')?.value || '0.5';
+
+        document.documentElement.style.setProperty('--h-blink-c1', c1);
+        document.documentElement.style.setProperty('--h-blink-c2', c2);
+        document.documentElement.style.setProperty('--h-blink-spd', speed + 's');
+        
+        face.classList.add('clock-blink-active');
+        setTimeout(() => {
+          face.classList.remove('clock-blink-active');
+        }, duration * 1000);
+      }
+    }
+  }, 1000);
+ })();
+ </script>
+    <script>
+(() => {
+ const slider = document.getElementById('alarm-snooze');
+ const manual = document.getElementById('snooze-manual');
+ const btns = document.querySelectorAll('.sn-btn');
+ 
+ if (slider && manual) {
+ const updateUI = (value) => {
+let mins = parseInt(value, 10);
+if (isNaN(mins) || mins < 1) mins = 1;
+
+// Крок перемикається на 15 хвилин після 30 ТІЛЬКИ при русі повзунка
+if (document.activeElement === slider) {
+  if (mins > 30 && mins < 45) { mins = 45; }
+  else if (mins > 45 && mins < 60) { mins = 60; }
+}
+
+slider.value = mins;
+manual.value = mins;
+localStorage.setItem('alarm-snooze', mins);
+
+// Знімаємо ліміт у 30 хв: згодовуємо велике число ядру для відображення на кнопці
+if (window.appSettings) { window.appSettings['alarm-snooze'] = mins; }
+
+ 
+ // Фарбуємо обраний пресет на шкалі в червоний колір
+ btns.forEach(b => {
+ if (parseInt(b.dataset.m, 10) === mins) {
+ b.classList.add('selected');
+ } else {
+ b.classList.remove('selected');
+ }
+ });
+
+ // Передаємо подію далі для оригінального коду додатка
+slider.dispatchEvent(new Event('input', { bubbles: true }));
+const alarmInput = document.getElementById('alarm-in');
+if (alarmInput && alarmInput.value) {
+  slider.dispatchEvent(new Event('change', { bubbles: true }));
+}
+};
+// Кліки по кнопках шкали
+
+ btns.forEach(b => {
+ b.addEventListener('click', (e) => updateUI(e.currentTarget.dataset.m));
+ });
+
+ // Рух повзунка
+ slider.addEventListener('input', (e) => updateUI(e.target.value));
+ 
+ // Ручне введення цифр
+ manual.addEventListener('input', (e) => updateUI(e.target.value));
+
+ // Ініціалізація збереженого значення при завантаженні
+ setTimeout(() => {
+ const saved = localStorage.getItem('alarm-snooze') || slider.value;
+ updateUI(saved);
+ }, 250);
+ }
+ })();
+</script>
+<!-- ДОДАТКОВЕ НАЛАШТУВАННЯ ЧАСУ СНУ В ПОПАПІ БУДИЛЬНИКА -->
+<script>
+(() => {
+  const injectPopupSnooze = () => {
+    const alarmCard = document.querySelector("#alarm-modal .alarm-card");
+    const alarmActions = document.querySelector("#alarm-modal .alarm-actions");
+    
+    if (alarmCard && alarmActions && !document.getElementById("popup-snooze-container")) {
+      // 1. Створюємо контейнер
+      const container = document.createElement("div");
+      container.id = "popup-snooze-container";
+      container.style.cssText = "margin: 15px 0; padding: 10px; border: 1px dashed #ddd; border-radius: 8px; background: #fafafa; width: 100%; box-sizing: border-box;";
+      
+      // 2. Копіюємо структуру (кнопки, повзунок, інпут) прямо з налаштувань
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 8px; width: 100%; color: #000000; font-family: sans-serif;">
+          <div style="font-weight: bold; font-size: 0.9rem;">Відкласти на (прямо зараз):</div>
+          <!-- Шкала швидкого вибору -->
+          <div style="display: flex; flex-wrap: wrap; gap: 4px; width: 100%;">
+            <button type="button" class="sn-btn-pop" data-m="5">5м</button>
+            <button type="button" class="sn-btn-pop" data-m="10">10м</button>
+            <button type="button" class="sn-btn-pop" data-m="15">15м</button>
+            <button type="button" class="sn-btn-pop" data-m="20">20м</button>
+            <button type="button" class="sn-btn-pop" data-m="25">25м</button>
+            <button type="button" class="sn-btn-pop" data-m="30">30м</button>
+            <button type="button" class="sn-btn-pop" data-m="45">45м</button>
+            <button type="button" class="sn-btn-pop" data-m="60">60м</button>
+          </div>
+          <!-- Повзунок та ручне введення -->
+          <div style="display: inline-flex; align-items: center; gap: 8px; width: 100%;">
+            <input type="range" class="pop-slider" min="1" max="60" step="1" value="5" style="flex: 1;" />
+            <input type="number" class="pop-manual" min="1" max="1440" value="5" style="width: 50px; text-align: center; font-weight: bold; border: 1px solid #ccc; border-radius: 4px; padding: 2px; color: #000; background: #fff;" />
+            <span style="font-weight: bold; color: #6264a7; font-size: 0.85rem;">хв</span>
+          </div>
+        </div>
+        <style>
+          .sn-btn-pop { padding: 3px 6px; font-size: 0.8rem; font-weight: 600; background: #ffffff; border: 1px solid #ccc; border-radius: 4px; cursor: pointer; color: #323130; }
+          .sn-btn-pop:hover { background: #f3f2f1; }
+          .sn-btn-pop.selected { background: #ff0000 !important; color: white !important; border-color: #ff0000 !important; }
+        </style>
+      `;
+      
+      alarmCard.insertBefore(container, alarmActions);
+
+      const popSlider = container.querySelector(".pop-slider");
+      const popManual = container.querySelector(".pop-manual");
+      const popBtns = container.querySelectorAll(".sn-btn-pop");
+      const mainSlider = document.getElementById("alarm-snooze");
+
+      // Функція синхронізації інтерфейсу всередині попапу
+      const updatePopupUI = (value) => {
+        let mins = parseInt(value, 10);
+        if (isNaN(mins) || mins < 1) mins = 1;
+        popSlider.value = mins;
+        popManual.value = mins;
+        
+        popBtns.forEach(b => {
+          if (parseInt(b.dataset.m, 10) === mins) {
+            b.classList.add("selected");
+          } else {
+            b.classList.remove("selected");
+          }
+        });
+
+         // Зміна кроку з 5 на 15 хвилин після 30 хвилин всередині самого попапу
+ if (document.activeElement === popSlider) {
+   if (mins > 30 && mins < 45) { mins = 45; }
+   else if (mins > 45 && mins < 60) { mins = 60; }
+   popSlider.value = mins;
+   popManual.value = mins;
+ }
+
+ localStorage.setItem('alarm-snooze', mins);
+ 
+ // ПРИМУСОВИЙ ОБХІД ЛІМІТУ: згодовуємо великий час ядру додатка прямо з попапу
+ if (window.appSettings) { window.appSettings['alarm-snooze'] = mins; }
+
+ if (mainSlider) {
+   mainSlider.value = mins;
+   mainSlider.dispatchEvent(new Event('input', { bubbles: true }));
+ }
+ };
+ // Вішаємо обробники подій на нові елементи в попапі
+      popBtns.forEach(b => {
+        b.addEventListener("click", (e) => updatePopupUI(e.currentTarget.dataset.m));
+      });
+      popSlider.addEventListener("input", (e) => updatePopupUI(e.target.value));
+      popManual.addEventListener("input", (e) => updatePopupUI(e.target.value));
+
+      // При відкритті копіюємо поточне значення з головних налаштувань
+      if (mainSlider) {
+        updatePopupUI(mainSlider.value);
+      }
+    }
+  };
+
+  const observer = new MutationObserver(() => {
+    const modal = document.getElementById("alarm-modal");
+    if (modal && (modal.classList.contains("open") || window.getComputedStyle(modal).display !== "none")) {
+      injectPopupSnooze();
+    }
+  });
+
+  window.addEventListener("DOMContentLoaded", () => {
+    observer.observe(document.body, { childList: true, subtree: true });
+    injectPopupSnooze();
+  });
+})();
+</script>
+<!-- Розумний зсув годинника: тільки якщо він потрапляє під панель налаштувань -->
+<script>
+(() => {
+  const panel = document.getElementById('panel');
+  const widget = document.getElementById('master-widget');
+  if (!panel || !widget) return;
+
+  const checkPosition = () => {
+    // Якщо панель відкрита
+    if (panel.classList.contains('open')) {
+      const panelWidth = Math.min(400, window.innerWidth * 0.92);
+      const panelLeftEdge = window.innerWidth - panelWidth;
+      const widgetRightEdge = widget.offsetLeft + widget.offsetWidth;
+
+      // Зсуваємо, тільки якщо годинник справа і потрапляє під панель
+      if (widgetRightEdge > panelLeftEdge) {
+        widget.classList.add('panel-push-active');
+        return;
+      }
+    }
+    // Коли панель закривається або годинник зліва — повертаємо на місце
+    widget.classList.remove('panel-push-active');
+  };
+
+  // Перевіряємо позицію при відкритті панелі, русі миші (Drag) та ресайзі вікна
+  new MutationObserver(checkPosition).observe(panel, { attributes: true, attributeFilter: ['class'] });
+  window.addEventListener('resize', checkPosition);
+  document.addEventListener('mousemove', checkPosition);
+})();
+</script>
+
+  </body>
+<!-- Автоматичне приховування фону, якщо час не встановлено -->
+<script>
+(() => {
+  const targetBtn = document.getElementById('alarm-time-btn');
+  const picker = document.getElementById('custom-btn-bg');
+
+  const checkAlarmTime = () => {
+    if (!targetBtn || !picker) return;
+    const txt = targetBtn.innerText.trim();
+    
+    // Якщо час не встановлено (--:-- або порожньо), примусово робимо фон невидимим
+    if (txt === '--:--' || txt === '') {
+      targetBtn.style.setProperty('background-color', 'transparent', 'important');
+    } else {
+      // Якщо час з'явився, повертаємо збережений колір з LocalStorage
+      const savedBg = localStorage.getItem('custom_alarm_btn_bg') || '#ffffff';
+      if (savedBg !== 'transparent' && savedBg !== '#ffffff') {
+        targetBtn.style.setProperty('background-color', savedBg, 'important');
+      }
+    }
+  };
+
+  if (targetBtn && picker) {
+    // Безперервно стежимо за зміною тексту всередині кнопки (скидання/встановлення часу)
+    const observer = new MutationObserver(() => checkAlarmTime());
+    observer.observe(targetBtn, { childList: true, characterData: true, subtree: true });
+    
+    // Також перевіряємо стан при кліках на скидання та під час старту сторінки
+    document.addEventListener('click', () => setTimeout(checkAlarmTime, 100));
+    setTimeout(checkAlarmTime, 300);
+  }
+})();
+</script>
+<!-- Просте збереження позиції годинника -->
+<script>
+(() => {
+  const w = document.getElementById('master-widget');
+  if (!w) return;
+
+  // 1. Відновлюємо позицію, якщо вона є в пам'яті
+  if (localStorage.getItem('w_left')) {
+    w.style.setProperty('left', localStorage.getItem('w_left'), 'important');
+    w.style.setProperty('top', localStorage.getItem('w_top'), 'important');
+    w.style.setProperty('bottom', 'auto', 'important');
+    w.style.setProperty('right', 'auto', 'important');
+  }
+
+  // 2. Автоматично записуємо позицію при будь-якому зсуві годинника
+  new MutationObserver(() => {
+    localStorage.setItem('w_left', w.style.left);
+    localStorage.setItem('w_top', w.style.top);
+  }).observe(w, { attributes: true, attributeFilter: ['style'] });
+})();
+</script>
+<!-- НОВИЙ НЕЗАЛЕЖНИЙ БЛОК: ЦИФРА ГОДИНИ З ОКРЕМОЮ ШВИДКІСТЮ -->
+<script>
+(() => {
+  // 1. Автоматичне створення інтерфейсу та елементів
+  window.addEventListener('DOMContentLoaded', () => {
+    // Додаємо нові повзунки кольору та швидкості для цифри в меню
+    const speedRow = document.getElementById('v-h-blink-speed')?.closest('.row');
+    if (speedRow && !document.getElementById('v-h-blink-num-c')) {
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = `
+        <div class="row" style="margin-top: 5px;">Колір цифри години: <input type="color" id="v-h-blink-num-c" value="#ffffff"></div>
+        <div class="row">Швидкість цифри (сек): <input type="range" id="v-h-blink-num-speed" min="0.1" max="2" step="0.1" value="0.5"></div>
+      `;
+      speedRow.after(wrapper);
+      
+      const inpC = document.getElementById('v-h-blink-num-c');
+      const inpS = document.getElementById('v-h-blink-num-speed');
+      
+      inpC.value = localStorage.getItem('v-h-blink-num-c-val') || '#ffffff';
+      inpS.value = localStorage.getItem('v-h-blink-num-speed-val') || '0.5';
+      
+      inpC.addEventListener('input', (e) => localStorage.setItem('v-h-blink-num-c-val', e.target.value));
+      inpS.addEventListener('input', (e) => localStorage.setItem('v-h-blink-num-speed-val', e.target.value));
+    }
+    
+    // Створюємо прихований контейнер для великої цифри всередині годинника
+    const face = document.getElementById('face');
+    if (face && !document.getElementById('blink-hour-number')) {
+      const numDiv = document.createElement('div');
+      numDiv.id = 'blink-hour-number';
+      numDiv.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-weight:900;pointer-events:none;z-index:10;line-height:1;';
+      face.appendChild(numDiv);
+      
+      // Додаємо окрему анімацію прозорості для цифри години
+      const style = document.createElement('style');
+      style.id = 'hour-num-blink-style';
+      style.textContent = `@keyframes hourNumBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } } .clock-num-blink-active { animation: hourNumBlink var(--h-blink-num-spd, 0.5s) infinite linear !important; }`;
+      document.head.appendChild(style);
+    }
+  });
+
+  // 2. Логіка незалежної активації та відстеження миготіння віджета
+(() => {
+  const face = document.getElementById('face');
+  const blinkNumDiv = document.getElementById('blink-hour-number');
+
+  if (!face || !blinkNumDiv) return;
+
+  const updateBlinkNumber = () => {
+    if (face.classList.contains('clock-blink-active')) {
+      if (blinkNumDiv.style.display !== 'flex') {
+        const now = new Date();
+        let displayHour = now.getHours();
+        if (displayHour === 0) displayHour = 12;
+
+        const numC = localStorage.getItem('v-h-blink-num-c-val') || '#ffffff';
+        const numSpeed = localStorage.getItem('v-h-blink-num-speed-val') || '0.5';
+        const clkSize = parseFloat(
+          getComputedStyle(document.documentElement)
+            .getPropertyValue('--clk-size')
+        ) || 220;
+
+        document.documentElement.style.setProperty('--h-blink-num-c', numC);
+        document.documentElement.style.setProperty('--h-blink-num-spd', numSpeed + 's');
+
+        blinkNumDiv.textContent = displayHour;
+        blinkNumDiv.style.color = 'var(--h-blink-num-c)';
+        blinkNumDiv.style.fontSize = (clkSize * 0.55) + 'px';
+        blinkNumDiv.style.display = 'flex';
+        blinkNumDiv.classList.add('clock-num-blink-active');
+      }
+    } else {
+      if (blinkNumDiv.style.display === 'flex') {
+        blinkNumDiv.style.display = 'none';
+        blinkNumDiv.classList.remove('clock-num-blink-active');
+      }
+    }
+  };
+
+  updateBlinkNumber(); // перевірка при старті
+
+  new MutationObserver(updateBlinkNumber).observe(face, {
+    attributes: true,
+    attributeFilter: ['class']
+  });
+})();
+</script>
+<!-- УЛЬТРА-МІНІ СКРИПТ: ЦИФРА ГОДИНИ ТА ТЕСТ -->
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  const speedRow = document.getElementById('v-h-blink-speed')?.closest('.row'), face = document.getElementById('face');
+  if (!speedRow || !face) return;
+
+  // 1. Створення елементів в меню та годиннику
+  const wrapper = document.createElement('div');
+  wrapper.innerHTML = `
+    <div class="row">Колір цифри: <input type="color" id="v-blink-num-custom" value="${localStorage.getItem('v-blink-num-custom') || '#ffffff'}"></div>
+    <div class="row">Швидкість цифри: <input type="range" id="v-num-s" min="0.1" max="2" step="0.1" value="${localStorage.getItem('v-num-s') || '0.3'}"></div>
+    <div class="row"><button type="button" id="v-num-t" style="width:100%; background:#6264a7; color:#fff; border:none; border-radius:4px; cursor:pointer; padding:4px;">⚡ ТЕСТ</button></div>
+  `;
+  speedRow.after(wrapper);
+
+  const num = document.createElement('div');
+  num.style.cssText = 'position:absolute;inset:0;display:none;align-items:center;justify-content:center;font-weight:900;pointer-events:none;z-index:10;line-height:1;';
+  face.appendChild(num);
+
+  // 2. Збереження налаштувань, анімація та кнопка ТЕСТ
+  const inpC = document.getElementById('v-blink-num-custom'), inpS = document.getElementById('v-num-s');
+inpC.oninput = () => localStorage.setItem('v-blink-num-custom', inpC.value);
+  inpS.oninput = () => localStorage.setItem('v-num-s', inpS.value);
+
+  document.getElementById('v-num-t').onclick = () => {
+    face.classList.add('clock-blink-active');
+    setTimeout(() => face.classList.remove('clock-blink-active'), 4000);
+  };
+
+  // 3. Контроль миготіння цифри за станом віджета
+  setInterval(() => {
+    if (face.classList.contains('clock-blink-active')) {
+      const size = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--clk-size')) || 220;
+      num.textContent = new Date().getHours() || 12;
+      num.style.color = inpC.value;
+      num.style.fontSize = (size * 0.55) + 'px';
+      num.style.display = 'flex';
+      num.style.opacity = (Math.floor(Date.now() / (inpS.value * 500)) % 2) ? '0' : '1'; // Окрема швидкість миготіння без CSS анімацій
+    } else {
+      num.style.display = 'none';
+    }
+  }, 1000);
+});
+</script>
+
+<script>
+window.addEventListener('load', () => {
+  const inp = document.getElementById('v-today-c');
+  if (!inp) return;
+
+  const applyColor = (val) => {
+    // Шукаємо клітинку сьогоднішнього дня в рядку заголовків днів тижня (.grid-hdr)
+    document.querySelectorAll('.grid-hdr .hdr-cell.today').forEach(el => {
+      // МІКРОЗМІНА: виправлено клас has_note на правильний has-note
+      if (el.classList.contains('has-note')) {
+        el.style.setProperty('background', '#ffff00', 'important');
+        el.style.setProperty('background-color', '#ffff00', 'important');
+      } else {
+        el.style.setProperty('background', val, 'important');
+        el.style.setProperty('background-color', val, 'important');
+      }
+    });
+  };
+
+  // Зчитуємо колір із localStorage або залишаємо поточне значення інпуту
+  inp.value = localStorage.getItem('v-td-bg') || inp.value;
+
+  // Динамічно змінюємо фон клітинки при переміщенні повзунка
+  inp.addEventListener('input', (e) => {
+    localStorage.setItem('v-td-bg', e.target.value);
+    applyColor(e.target.value);
+  });
+
+  // Запуск відновлення кольору після ініціалізації сітки
+  setTimeout(() => applyColor(inp.value), 300);
+  setTimeout(() => applyColor(inp.value), 800);
+});
+  document.getElementById('v-num-size-custom')?.addEventListener('input', (e) => {
+  localStorage.setItem('v-num-size-custom', e.target.value);
+  document.querySelectorAll('#face .num span').forEach(s => {
+    s.style.setProperty('font-size', e.target.value + 'px', 'important');
+  });
+});
+</script>
+</html>

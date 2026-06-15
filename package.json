@@ -1,0 +1,13 @@
+{
+  "name": "replit-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "npx serve public -l 7860",
+    "build": "node ./scripts/build.mjs",
+    "start": "npx serve dist -l 7860"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.9"
+  }
+}
