@@ -2,6 +2,7 @@
   "name": "clockcleaned",
   "version": "1.0.0",
   "private": true,
+
   "main": "main.js",
 
   "scripts": {
@@ -13,11 +14,13 @@
   "build": {
     "appId": "com.clockcleaned.app",
     "productName": "ClockCleaned",
+
     "files": [
       "dist/**/*",
       "main.js",
       "package.json"
     ],
+
     "win": {
       "target": "nsis"
     }
@@ -29,7 +32,7 @@
 
   "devDependencies": {
     "esbuild": "^0.25.9",
-    "electron": "^latest",
-    "electron-builder": "^latest"
+    "electron": "28.2.0",
+    "electron-builder": "24.13.3"
   }
 }
