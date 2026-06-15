@@ -6,10 +6,8 @@
 
   "scripts": {
     "dev": "npx serve public -l 7860",
-    "build:web": "node ./scripts/build.mjs",
-    "postbuild:web": "mkdir -p dist && cp -r public/* dist/",
-    "electron": "electron .",
-    "build": "npm run build:web && electron-builder"
+    "build": "node ./scripts/build.mjs",
+    "electron": "electron ."
   },
 
   "build": {
