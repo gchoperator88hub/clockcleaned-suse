@@ -1,13 +1,37 @@
 {
-  "name": "replit-app",
+  "name": "clockcleaned",
   "version": "1.0.0",
   "private": true,
+  "main": "main.js",
+
   "scripts": {
     "dev": "npx serve public -l 7860",
-    "build": "node ./scripts/build.mjs",
-    "start": "npx serve dist -l 7860"
+    "build:web": "node ./scripts/build.mjs",
+    "postbuild:web": "mkdir -p dist && cp -r public/* dist/",
+    "electron": "electron .",
+    "build": "npm run build:web && electron-builder"
   },
+
+  "build": {
+    "appId": "com.clockcleaned.app",
+    "productName": "ClockCleaned",
+    "files": [
+      "dist/**/*",
+      "main.js",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+
+  "dependencies": {
+    "serve": "^14.2.0"
+  },
+
   "devDependencies": {
-    "esbuild": "^0.25.9"
+    "esbuild": "^0.25.9",
+    "electron": "^latest",
+    "electron-builder": "^latest"
   }
 }

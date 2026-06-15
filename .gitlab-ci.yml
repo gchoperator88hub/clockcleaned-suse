@@ -1,0 +1,14 @@
+stages:
+  - build
+
+build_windows:
+  stage: build
+  image: node:18
+  script:
+    - npm install
+    - npm run build
+    - npx electron-builder --win nsis
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 7 days
