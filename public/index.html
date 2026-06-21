@@ -268,6 +268,10 @@
         </div>
         <div class="row">
  Колір таблиці <input type="color" id="v-table-bg" value="#ffffff" />
+ <label for="table-bg-file" style="cursor:pointer; margin-left:10px; padding:2px 8px; background:#444; color:#fff; border-radius:4px; font-size:12px; display:inline-block;">📁 Фото</label>
+ <input type="file" id="table-bg-file" accept="image/png, image/jpeg, image/webp" style="display:none;">
+ <span id="table-bg-name" style="font-size:11px; color:#aaa; margin-left:5px; max-width:100px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; display:inline-block; vertical-align:middle;"></span>
+ <button id="clear-table-bg-file" style="margin-left:5px; font-size:11px; background:#ff4444; color:white; border:none; border-radius:3px; cursor:pointer; padding:2px 6px;">✕</button>
 </div>
         <div class="row">
  Колір поточного дня <input type="color" id="v-today-col-bg" value="#ffffff" />
@@ -559,33 +563,29 @@
         Розмір мітки
         <input type="range" id="v-alarm-marker-size" min="6" max="28" step="1" value="12" />
       </div>
-      <div class="row">
-        Мелодія:
-        <select id="alarm-sound" style="padding: 6px; min-width: 200px; max-width: 58%">
-          <option value="chime_g5">Дзвін G5 (м’яко)</option>
-          <option value="morning_light">Ранкове світло</option>
-          <option value="lavender">Лаванда</option>
-          <option value="zen_bowl">Поюча чаша</option>
-          <option value="forest_morning">Ранок у лісі</option>
-          <option value="ocean_calm">Спокій океану</option>
-          <option value="harp_soft">Арфа</option>
-          <option value="xylophone_soft">Ксилофон</option>
-          <option value="bells_major">Дзвони (мажор)</option>
-          <option value="bells_minor">Дзвони (мінор)</option>
-          <option value="pad_warm">Теплий педаль</option>
-          <option value="pad_airy">Повітряний педаль</option>
-          <option value="ukulele_chord">Укулеле (акорд)</option>
-          <option value="piano_soft">Фортепіано (м’яко)</option>
-          <option value="flute_like">Флейта</option>
-          <option value="music_box">Музична шкатулка</option>
-          <option value="birds_morning">Пташки (легко)</option>
-          <option value="spa_bells">Спа-дзвін</option>
-          <option value="sunrise_arpeggio">Схід (арпеджіо)</option>
-          <option value="gentle_pulse">М’який пульс</option>
-          <option value="classic_soft">Класика (м’яко)</option>
-          <option value="soft_beep">Тихий сигнал</option>
-        </select>
-      </div>
+      <!-- БЛОК 1: Вибір мелодії файлу (Тепер на окремому рядку) -->
+<div class="row" style="display: flex; flex-direction: column; width: 100%; box-sizing: border-box; margin-bottom: 12px;">
+ <label for="alarm-sound" style="font-weight: bold; color: var(--teams-text, #333); margin-bottom: 5px;">Мелодія:</label>
+ <select id="alarm-sound" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc;">
+ <option value="alarm.mp3">Файл alarm.mp3</option>
+ </select>
+</div>
+
+<!-- БЛОК 2: Вибір джерела звуку (Тепер також на окремому рядку під мелодією) -->
+<div class="row" style="display: flex; flex-direction: column; width: 100%; box-sizing: border-box; margin-bottom: 12px;">
+ <label for="audio-source-mode" style="font-weight: bold; color: var(--teams-text, #333); margin-bottom: 5px;">Джерело звуку будильника:</label>
+ <select id="audio-source-mode" style="width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc;">
+ <option value="url">Пряме посилання (Hugging Face URL)</option>
+ <option value="base64" selected>Вбудований звук (Base64 текст)</option>
+ <option value="custom">Моя власна мелодія (З вікна налаштувань)</option>
+ </select>
+</div>
+
+<!-- Тепер блок Base64 починається з нового рядка і займає 100% ширини -->
+<div class="row" style="display: flex; flex-direction: column; width: 100%; box-sizing: border-box; margin-top: 12px; padding-top: 12px; border-top: 1px dashed #ccc;">
+ <label style="font-weight: bold; font-family: sans-serif; font-size: 13px; color: #323130; margin-bottom: 5px;">Текст власної мелодії (Base64):</label>
+ <textarea id="alarm-custom-text" rows="6" style="width: 100%; padding: 8px; font-family: monospace; font-size: 11px; box-sizing: border-box; resize: vertical; border-radius: 4px; border: 1px solid #ccc;" placeholder="data:audio/mp3;base64,..."></textarea>
+</div>
       <div class="row">
         Тривалість (сек)
         <input
@@ -648,20 +648,7 @@
  Швидкість миготіння
  <input type="range" min="0.1" max="2" step="0.1" value="0.5" oninput="document.documentElement.style.setProperty('--flash-speed', this.value + 's')">
  </div>
- <script>
- // Цей автоматичний скрипт повністю блокує старий звук при завантаженні додатка
- window.addEventListener('DOMContentLoaded', () => {
-   document.getElementById('alarm-sound')?.remove();
-   const oldVol = document.getElementById('alarm-vol');
-   if (oldVol) {
-     oldVol.value = 0;
-     oldVol.min = 0;
-     oldVol.max = 0;
-     oldVol.style.pointerEvents = 'none';
-     oldVol.dispatchEvent(new Event('input'));
-   }
- });
- </script>
+ 
  <!-- === КІНЕЦЬ НОВОГО БЛОКУ === -->
       </div>
 
@@ -1098,11 +1085,14 @@ if (alarmInput && alarmInput.value) {
  b.addEventListener('click', (e) => updateUI(e.currentTarget.dataset.m));
  });
 
- // Рух повзунка
- slider.addEventListener('input', (e) => updateUI(e.target.value));
- 
- // Ручне введення цифр
- manual.addEventListener('input', (e) => updateUI(e.target.value));
+ // Рух повзунка (спрацьовує тільки якщо користувач взаємодіє з екраном)
+slider.addEventListener('input', (e) => {
+  if (e.isTrusted) updateUI(e.target.value);
+});
+// Ручне введення цифр
+manual.addEventListener('input', (e) => {
+  if (e.isTrusted) updateUI(e.target.value);
+});
 
  // Ініціалізація збереженого значення при завантаженні
  setTimeout(() => {
@@ -1478,4 +1468,138 @@ window.addEventListener('load', () => {
   });
 });
 </script>
+<!-- КОРЕКЦІЯ ПЛЕЄРА: ПРИМУСОВЕ ВІДТВОРЕННЯ ВЛАСНОЇ МЕЛОДІЇ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const select = document.getElementById('audio-source-mode');
+  const textarea = document.getElementById('alarm-custom-text');
+
+  // 1. Відновлюємо збережену мелодію з пам'яті після перезавантаження або Ctrl+F5
+  if (textarea) {
+    textarea.value = localStorage.getItem('app_my_base64_audio_data') || '';
+    textarea.addEventListener('input', () => {
+      localStorage.setItem('app_my_base64_audio_data', textarea.value.trim());
+    });
+  }
+
+  // 2. Перехоплюємо старт плеєра: спрацьовує виключно в момент запуску звуку
+  if (window.globalAlarmAudio) {
+    const originalPlay = window.globalAlarmAudio.play;
+    
+    window.globalAlarmAudio.play = function(...args) {
+      const mode = select ? select.value : localStorage.getItem('audio-source-mode-val');
+      const customSound = localStorage.getItem('app_my_base64_audio_data') || '';
+      
+      // Якщо обрано власну мелодію — примусово підміняємо src перед стартом звуку
+      if (mode === 'custom' && customSound.trim() !== '') {
+        if (this.src !== customSound.trim()) {
+          this.src = customSound.trim();
+          this.load();
+        }
+      }
+      return originalPlay.apply(this, args);
+    };
+  }
+});
+</script>
+<!-- АВТОЗБЕРЕЖЕННЯ РЕЖИМУ ДЖЕРЕЛА ЗВУКУ -->
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const modeSelect = document.getElementById('audio-source-mode');
+  if (modeSelect) {
+    // 1. Відновлюємо ваш останній вибір при завантаженні сторінки (Ctrl+F5)
+    const savedMode = localStorage.getItem('audio-source-mode-val');
+    if (savedMode) modeSelect.value = savedMode;
+
+    // 2. Запам'ятовуємо новий вибір одразу в момент ручної зміни параметра
+    modeSelect.addEventListener('change', (e) => {
+      localStorage.setItem('audio-source-mode-val', e.target.value);
+    });
+  }
+});
+</script>
+
+  <!-- РЕМОНТ ВБУДОВАНОГО ЗВУКУ ЧЕРЕЗ INDEXEDDB -->
+<div id="db-box" style="margin: 15px 10px; padding: 10px; border-top: 1px dashed #ccc;">
+  <label style="font-weight: bold; font-family: sans-serif; font-size: 13px; color: #323130; display: block; margin-bottom: 5px;">Локальний файл для Вбудованого звуку:</label>
+  <input type="file" id="db-file" accept=".mp3" style="display: none;" />
+  <button id="db-btn" type="button" style="width: 100%; padding: 8px; background: #2ecc71; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">📁 ЗАВАНТАЖИТИ MP3</button>
+  <div id="db-msg" style="font-size: 11px; text-align: center; margin-top: 4px; color: #555;">Очікування файлу...</div>
+</div>
+
+<script>
+(() => {
+  // Автоперенесення блоку всередину налаштувань над синьою кнопкою збереження
+  const p = document.getElementById('panel');
+  if (p) {
+    const s = p.querySelector('button[onclick*="remove"]');
+    if (s) s.before(document.getElementById('db-box'));
+  }
+
+  // Робота з базою даних IndexedDB
+  const r = indexedDB.open('AlarmFileDB', 1);
+  r.onupgradeneeded = e => e.target.result.createObjectStore('mp3_store');
+  r.onsuccess = e => {
+    const db = e.target.result;
+    
+    db.transaction('mp3_store').objectStore('mp3_store').get('track').onsuccess = ev => {
+      if (ev.target.result) document.getElementById('db-msg').textContent = "🎵 MP3 файл збережено в браузері";
+    };
+
+    document.getElementById('db-btn').onclick = (ev) => { ev.preventDefault(); document.getElementById('db-file').click(); };
+
+    document.getElementById('db-file').onchange = ev => {
+  const file = ev.target.files[0]; // <-- ОНОВЛЕНО: беремо конкретно перший 1 файл
+  if (!file) return;
+  const tx = db.transaction('mp3_store', 'readwrite');
+  tx.objectStore('mp3_store').put(file, 'track'); // Автоматично затирає старий файл у базі
+  tx.oncomplete = () => { document.getElementById('db-msg').textContent = " ✅ Збережено: " + file.name; };
+};
+
+    // ПОВНЕ ВИМКНЕННЯ ФОНОВИХ ПЕРЕВІРОК ТА ЗВУКУ БЕЗ БУДИЛЬНИКА
+ const audio = window.globalAlarmAudio || document.querySelector('audio');
+ if (audio) {
+ // Крок 1: Забороняємо плеєру грати будь-який звук у фоні або під час кліків на панель налаштувань
+ const origPlay = audio.play;
+ audio.play = function(...args) {
+ // Якщо модальне вікно будильника НЕ відкрито — звук повністю заблоковано, код далі не йде
+ const modal = document.getElementById('alarm-modal');
+ if (!modal || (!modal.classList.contains('open') && window.getComputedStyle(modal).display === 'none')) {
+ return Promise.resolve(); 
+ }
+ // Якщо будильник відкрився і блимає — дозволяємо оригінальний запуск звуку
+ return origPlay.apply(this, args);
+ };
+
+ // Крок 2: Створюємо спостерігач (MutationObserver). Він спить і споживає 0% CPU.
+ // Він прокинеться автоматично ТІЛЬКИ в ту мікросекунду, коли вікно будильника почне блимати (отримає клас 'open').
+ const alarmModal = document.getElementById('alarm-modal');
+ if (alarmModal) {
+ const observer = new MutationObserver(() => {
+ // Перевіряємо, чи вікно будильника стало активним (почало блимати)
+ if (alarmModal.classList.contains('open') || window.getComputedStyle(alarmModal).display !== 'none') {
+ // Тільки в цей момент, якщо обрано "Вбудований звук", ми дістаємо файл із бази і вмикаємо його
+ if (document.getElementById('audio-source-mode')?.value === 'base64') {
+ db.transaction('mp3_store').objectStore('mp3_store').get('track').onsuccess = ev => {
+ if (ev.target.result) {
+ const blobUrl = URL.createObjectURL(ev.target.result);
+ if (audio.src !== blobUrl) {
+ audio.src = blobUrl;
+ audio.load();
+ }
+ origPlay.apply(audio).catch(e => console.log("Старт звуку:", e));
+ }
+ };
+ }
+ }
+ });
+
+ // Наказуємо спостерігачу стежити виключно за зміною класів вікна будильника
+ observer.observe(alarmModal, { attributes: true, attributeFilter: ['class', 'style'] });
+ }
+ }
+  };
+})();
+</script>
+
 </html>

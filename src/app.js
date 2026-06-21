@@ -225,11 +225,11 @@ flex:1;
 box-sizing:border-box;
 ">
 `;
-    const monthsNames = ["Січ 1","Лют 2","Бер 3","Кві 4","Тра 5","Чер 6","Лип 7","Сер 8","Вер 9","Жов 10","Лис 11","Гру 12"];
+    const monthsNames = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
     
     monthsNames.forEach((m, i) => {
       const isCurrent = i === (new Date()).getMonth();
-      const txtStyle = isCurrent ? "font-weight:bold;color:#ff0000;opacity:1;" : "color:var(--day-color, #000000);opacity:0.6;";
+      const txtStyle = isCurrent ? "font-weight:900;color:#ff0000;opacity:1;display:inline-flex;gap:2px;letter-spacing:-0.5px;" : "color:var(--day-color, #000000);opacity:1;font-weight:900;display:inline-flex;gap:2px;letter-spacing:-0.5px;";
       innerHtml += `<button class="month-btn" data-idx="${i}" style="${txtStyle}flex:1;text-align:center;font-size:var(--day-size, 16px);display:inline-block;background:none;border:none;cursor:pointer;padding:2px 0;">${m}</button>`;
     });
     innerHtml += `</div>`;
@@ -646,266 +646,130 @@ localStorage.removeItem("alarm-in");
    ?.classList.remove("clock-blink-active");
 }
 
-  /** Pleasant continuous pads / chords — simple graph so audio always works. */
-  const ALARM_PRESETS = {
-    chime_g5: {
-      lpf: 3400,
-      oscs: [
-        { freq: 392.0, type: "sine", gain: 0.11 },
-        { freq: 493.88, type: "sine", gain: 0.09 },
-        { freq: 587.33, type: "sine", gain: 0.07 },
-      ],
-    },
-    morning_light: {
-      lpf: 4200,
-      oscs: [
-        { freq: 440, type: "triangle", gain: 0.09 },
-        { freq: 554.37, type: "sine", gain: 0.065 },
-        { freq: 659.25, type: "sine", gain: 0.05 },
-      ],
-    },
-    lavender: {
-      lpf: 3000,
-      oscs: [
-        { freq: 261.63, type: "sine", gain: 0.1 },
-        { freq: 329.63, type: "sine", gain: 0.08 },
-        { freq: 392.0, type: "sine", gain: 0.06 },
-      ],
-    },
-    zen_bowl: {
-      lpf: 2800,
-      oscs: [
-        { freq: 196.0, type: "sine", gain: 0.12 },
-        { freq: 293.66, type: "sine", gain: 0.06 },
-        { freq: 392.0, type: "sine", gain: 0.04 },
-      ],
-    },
-    forest_morning: {
-      lpf: 3600,
-      oscs: [
-        { freq: 329.63, type: "triangle", gain: 0.08 },
-        { freq: 415.3, type: "sine", gain: 0.06 },
-        { freq: 523.25, type: "sine", gain: 0.045 },
-      ],
-    },
-    ocean_calm: {
-      lpf: 2400,
-      oscs: [
-        { freq: 174.61, type: "sine", gain: 0.1 },
-        { freq: 220.0, type: "sine", gain: 0.07 },
-        { freq: 277.18, type: "sine", gain: 0.05 },
-      ],
-    },
-    harp_soft: {
-      lpf: 5000,
-      oscs: [
-        { freq: 523.25, type: "triangle", gain: 0.07 },
-        { freq: 659.25, type: "sine", gain: 0.055 },
-        { freq: 783.99, type: "sine", gain: 0.04 },
-        { freq: 987.77, type: "sine", gain: 0.03 },
-      ],
-    },
-    xylophone_soft: {
-      lpf: 6500,
-      oscs: [
-        { freq: 659.25, type: "triangle", gain: 0.06 },
-        { freq: 783.99, type: "triangle", gain: 0.05 },
-        { freq: 880.0, type: "sine", gain: 0.04 },
-      ],
-    },
-    bells_major: {
-      lpf: 4000,
-      oscs: [
-        { freq: 523.25, type: "sine", gain: 0.09 },
-        { freq: 659.25, type: "sine", gain: 0.07 },
-        { freq: 783.99, type: "sine", gain: 0.055 },
-      ],
-    },
-    bells_minor: {
-      lpf: 3800,
-      oscs: [
-        { freq: 493.88, type: "sine", gain: 0.085 },
-        { freq: 587.33, type: "sine", gain: 0.065 },
-        { freq: 698.46, type: "sine", gain: 0.05 },
-      ],
-    },
-    pad_warm: {
-      lpf: 2200,
-      oscs: [
-        { freq: 196.0, type: "sine", gain: 0.1, detune: -5 },
-        { freq: 246.94, type: "sine", gain: 0.08, detune: 4 },
-        { freq: 293.66, type: "sine", gain: 0.06 },
-      ],
-    },
-    pad_airy: {
-      lpf: 5200,
-      oscs: [
-        { freq: 440, type: "sine", gain: 0.06, detune: -3 },
-        { freq: 554.37, type: "sine", gain: 0.05, detune: 3 },
-        { freq: 880, type: "sine", gain: 0.025 },
-      ],
-    },
-    ukulele_chord: {
-      lpf: 4500,
-      oscs: [
-        { freq: 392.0, type: "triangle", gain: 0.07 },
-        { freq: 493.88, type: "triangle", gain: 0.055 },
-        { freq: 587.33, type: "sine", gain: 0.045 },
-        { freq: 739.99, type: "sine", gain: 0.03 },
-      ],
-    },
-    piano_soft: {
-      lpf: 4800,
-      oscs: [
-        { freq: 261.63, type: "triangle", gain: 0.065 },
-        { freq: 329.63, type: "triangle", gain: 0.055 },
-        { freq: 392.0, type: "sine", gain: 0.045 },
-        { freq: 523.25, type: "sine", gain: 0.035 },
-      ],
-    },
-    flute_like: {
-      lpf: 6000,
-      oscs: [
-        { freq: 880, type: "sine", gain: 0.07 },
-        { freq: 1320, type: "sine", gain: 0.03 },
-      ],
-    },
-    music_box: {
-      lpf: 7000,
-      oscs: [
-        { freq: 1046.5, type: "sine", gain: 0.045 },
-        { freq: 1318.51, type: "sine", gain: 0.035 },
-        { freq: 1567.98, type: "sine", gain: 0.025 },
-      ],
-    },
-    birds_morning: {
-      lpf: 8000,
-      oscs: [
-        { freq: 1760, type: "sine", gain: 0.035 },
-        { freq: 2093.0, type: "sine", gain: 0.028 },
-        { freq: 2349.32, type: "sine", gain: 0.02 },
-      ],
-    },
-    spa_bells: {
-      lpf: 3200,
-      oscs: [
-        { freq: 369.99, type: "sine", gain: 0.09 },
-        { freq: 440.0, type: "sine", gain: 0.07 },
-        { freq: 554.37, type: "sine", gain: 0.05 },
-      ],
-    },
-    sunrise_arpeggio: {
-      lpf: 4000,
-      oscs: [
-        { freq: 392.0, type: "triangle", gain: 0.065 },
-        { freq: 493.88, type: "triangle", gain: 0.055 },
-        { freq: 587.33, type: "sine", gain: 0.045 },
-        { freq: 739.99, type: "sine", gain: 0.035 },
-        { freq: 880.0, type: "sine", gain: 0.025 },
-      ],
-    },
-    gentle_pulse: {
-      lpf: 3500,
-      oscs: [
-        { freq: 330, type: "triangle", gain: 0.075 },
-        { freq: 415.3, type: "sine", gain: 0.055 },
-      ],
-    },
-    classic_soft: {
-      lpf: 3800,
-      oscs: [
-        { freq: 523.25, type: "triangle", gain: 0.08 },
-        { freq: 659.25, type: "sine", gain: 0.05 },
-      ],
-    },
-    soft_beep: {
-      lpf: 3000,
-      oscs: [
-        { freq: 740, type: "sine", gain: 0.09 },
-        { freq: 370, type: "sine", gain: 0.045 },
-      ],
-    },
+  // Нативна ініціалізація аудіо-плеєра для файлу alarm.mp3 через пряме посилання Hugging Face
+if (!window.globalAlarmAudio) {
+ window.globalAlarmAudio = new Audio("https://huggingface.co/spaces/gchgch/clock/resolve/main/public/alarm.mp3");
+ window.globalAlarmAudio.load();
+ window.globalAlarmAudio.loop = true;
+}
+  // Додатковий блок для підтримки перемикача джерела звуку (Base64 / URL)
+// ==========================================
+document.addEventListener("DOMContentLoaded", () => {
+  const sourceModeElement = document.getElementById("audio-source-mode");
+  // РЕМОНТ: Опція base64 тепер асинхронно дістає файл з вашої нової бази AlarmFileDB
+ window.addEventListener('DOMContentLoaded', () => {
+   if (window.globalAlarmAudio) {
+     const origPlay = window.globalAlarmAudio.play;
+     
+     window.globalAlarmAudio.play = function(...args) {
+       if (document.getElementById('audio-source-mode')?.value === 'base64') {
+         const dbReq = indexedDB.open('AlarmFileDB', 1);
+         dbReq.onsuccess = (e) => {
+           const db = e.target.result;
+           db.transaction('mp3_store').objectStore('mp3_store').get('track').onsuccess = (ev) => {
+             const fileData = ev.target.result;
+             if (fileData) {
+               // Формуємо робоче посилання на mp3 з бази та запускаємо
+               window.globalAlarmAudio.src = URL.createObjectURL(fileData);
+               window.globalAlarmAudio.load();
+             }
+             origPlay.apply(window.globalAlarmAudio, args);
+           };
+         };
+         return Promise.resolve();
+       }
+       return origPlay.apply(this, args);
+     };
+   }
+ }); 
+  const originalUrlSource = "https://huggingface.co/spaces/gchgch/clock/resolve/main/public/alarm.mp3";
+
+  // Функція, яка дивиться на перемикач і міняє шлях всередині вашого старого плеєра
+  function applyAudioSource() {
+    if (!window.globalAlarmAudio) return;
+    
+    const selectedMode = sourceModeElement ? sourceModeElement.value : "base64";
+    const newSrc = (selectedMode === "url") ? originalUrlSource : alarmBase64Source;
+
+    // Якщо шлях змінився в меню, оновлюємо плеєр вашого старого коду
+    if (window.globalAlarmAudio.src !== newSrc) {
+      const wasPlaying = !window.globalAlarmAudio.paused;
+      window.globalAlarmAudio.pause();
+      window.globalAlarmAudio.src = newSrc;
+      window.globalAlarmAudio.load();
+      if (wasPlaying) {
+        window.globalAlarmAudio.play().catch(e => console.log("Помилка відтворення:", e));
+      }
+    }
+  }
+
+  // Перевіряємо вибір одразу при запуску сторінки
+  applyAudioSource();
+
+  // Слідкуємо за кліками користувача в меню налаштувань
+  if (sourceModeElement) {
+    sourceModeElement.addEventListener("change", applyAudioSource);
+  }
+});
+
+// Попереднє зняття блокування звуку браузером за першим кліком користувача на сторінці
+const removeBrowserAudioBlock = () => {
+  if (window.globalAlarmAudio) {
+    window.globalAlarmAudio.play().then(() => {
+  window.globalAlarmAudio.pause();
+  window.globalAlarmAudio.currentTime = 0;
+  console.log("Alarm audio unlocked");
+}).catch(err => console.log("Alarm unlock failed:", err));
+    document.removeEventListener('click', removeBrowserAudioBlock);
+    document.removeEventListener('touchstart', removeBrowserAudioBlock);
+  }
+};
+document.addEventListener('click', removeBrowserAudioBlock);
+document.addEventListener('touchstart', removeBrowserAudioBlock);
+
+function startAlarmSound() {
+  // Зчитуємо параметри "Тривалість" та "Гучність" безпосередньо з вашої HTML-панелі
+  const durationSec = Math.max(5, Math.min(3600, parseInt(alarmLen?.value || "300", 10)));
+  const volumePercent = parseInt(alarmVol?.value || "35", 10);
+  
+  // Повне скидання попереднього стану треку та виставлення нової гучності (від 0.0 до 1.0)
+  window.globalAlarmAudio.pause();
+  window.globalAlarmAudio.currentTime = 0;
+  window.globalAlarmAudio.volume = Math.max(0, Math.min(1, volumePercent / 100));
+  
+  // Запускаємо відтворення файлу alarm.mp3
+  window.globalAlarmAudio.play().catch(() => {
+    // Якщо кліків не було, звук активується примусово при взаємодії з вікном будильника
+    const playOnClick = () => { window.globalAlarmAudio.play().catch(() => {}); document.removeEventListener('click', playOnClick); };
+    document.addEventListener('click', playOnClick);
+  });
+
+  // Локальна функція зупинки для повної сумісності з оригінальними кнопками Stop/Snooze
+  const localStop = () => {
+    if (window.globalAlarmAudio) {
+      window.globalAlarmAudio.pause();
+      window.globalAlarmAudio.currentTime = 0;
+    }
   };
 
-  function startAlarmSound() {
-    const ctx = ensureAudio();
-    ctx.resume?.();
-
-    const mode = alarmSound?.value || "chime_g5";
-    const durationSec = Math.max(5, Math.min(3600, parseInt(alarmLen?.value || "300", 10)));
-    const vol = Math.max(0.05, Math.min(1, parseInt(alarmVol?.value || "35", 10) / 100));
-
-    const preset = ALARM_PRESETS[mode] || ALARM_PRESETS.chime_g5;
-    const t0 = ctx.currentTime;
-    const tEnd = t0 + durationSec;
-
-    const master = ctx.createGain();
-    master.gain.setValueAtTime(0.0001, t0);
-    master.gain.exponentialRampToValueAtTime(vol * 0.4, t0 + 0.06);
-    master.connect(ctx.destination);
-
-    const filter = ctx.createBiquadFilter();
-    filter.type = "lowpass";
-    filter.frequency.value = preset.lpf;
-    filter.Q.value = 0.7;
-    filter.connect(master);
-
-    const nodes = [master, filter];
-
-    for (const o of preset.oscs) {
-      const osc = ctx.createOscillator();
-      osc.type = o.type || "sine";
-      osc.frequency.value = o.freq;
-      if (o.detune != null) osc.detune.value = o.detune;
-      const g = ctx.createGain();
-      g.gain.value = o.gain ?? 0.1;
-      osc.connect(g);
-      g.connect(filter);
-      osc.start(t0);
-      osc.stop(tEnd);
-      nodes.push(osc, g);
-    }
-
-    const localStop = () => {
-      const t = ctx.currentTime;
-      try {
-        master.gain.cancelScheduledValues(t);
-        master.gain.setValueAtTime(master.gain.value, t);
-        master.gain.exponentialRampToValueAtTime(0.0001, t + 0.08);
-      } catch {}
-      window.setTimeout(() => {
-        for (const n of nodes) {
-          try {
-            n.disconnect?.();
-          } catch {}
-          try {
-            n.stop?.();
-          } catch {}
-        }
-        try {
-          master.disconnect();
-        } catch {}
-      }, 200);
-    };
-
-    stopAlarmFn = localStop;
-    window.setTimeout(() => {
-      if (stopAlarmFn === localStop) {
-        stopAlarmFn = null;
-        localStop();
-      }
-    }, durationSec * 1000 + 400);
-  }
-
-  function stopAlarm() {
-    if (stopAlarmFn) {
-      stopAlarmFn();
+  stopAlarmFn = localStop;
+  window.setTimeout(() => {
+    if (stopAlarmFn === localStop) {
       stopAlarmFn = null;
+      localStop();
     }
-    closeAlarmModal();
-    // if snoozing is not active, revert indicator to the configured alarm time
-    if (snoozeUntilMs === 0) setAlarmIndicatorFromValue(alarmIn?.value || "", false);
+  }, durationSec * 1000);
+}
+
+function stopAlarm() {
+  // Цей блок повністю зберігає ваші оригінальні зв'язки та системні виклики вікон
+  if (stopAlarmFn) {
+    stopAlarmFn();
+    stopAlarmFn = null;
   }
+  closeAlarmModal();
+  if (snoozeUntilMs === 0) setAlarmIndicatorFromValue(alarmIn?.value || "", false);
+}
 
   function snoozeAlarm(now) {
     const mins = Math.max(1, Math.min(600, parseInt(alarmSnooze?.value || "5", 10)));
@@ -1231,5 +1095,86 @@ if (dateUnderClock) {
   
 
 
-
 }
+
+// ПРОСТЕ ТА ЕНЕРГОЕФЕКТИВНЕ ВІДОБРАЖЕННЯ ФОТО
+document.getElementById('table-bg-file')?.addEventListener('change', async function(e) {
+
+  const iframe = document.getElementById('iFrameResizer0');
+  const doc = iframe?.contentDocument || iframe?.contentWindow?.document || document; // ВИПРАВЛЕНО: Додано резервний перехід на document, якщо iframe не існує
+  const file = e.target.files[0]; // Беремо рівно один файл
+  if (!file) return;
+  console.log('PHOTO HANDLER START');
+  
+  // 1. Показуємо ім'я файлу в панелі налаштувань
+  const nameLabel = document.getElementById('table-bg-name');
+  if (nameLabel) nameLabel.textContent = file.name;
+
+  // 2. Створюємо легке посилання на фото в оперативній пам'яті (RAM)
+  const blobUrl = await new Promise(resolve => {
+  const r = new FileReader();
+  r.onload = () => resolve(r.result);
+  r.readAsDataURL(file);
+});
+console.log('AFTER FILE LOADED');
+  // 3. Створюємо ізольоване CSS-правило в голові документа
+  let styleEl = doc.getElementById('global-photo-style');
+
+if (!styleEl) {
+  styleEl = doc.createElement('style');
+  styleEl.id = 'global-photo-style';
+  doc.head.appendChild(styleEl);
+    console.log('APPENDED STYLE ELEMENT:', styleEl);
+  }
+console.log('WRITING PHOTO CSS')
+  // Накладаємо фото на фон таблиці, а 6 днів робимо прозорими. Поточний день (.today-col) захищено!
+  styleEl.textContent = `
+    #grid-main, .grid-content, .scroller, .timetable-grid { 
+      background-image: url(${blobUrl}) !important; 
+      background-size: 100% auto !important; /* МІНІМАЛЬНА ЗМІНА: замінено cover на contain */
+      background-position: center !important;
+      background-repeat: no-repeat !important;
+    }
+    .day-column:not(.today-col), .day-column:not(.today-col) .cell, #hours-sidebar .cell { 
+      background: transparent !important; 
+      background-color: transparent !important; 
+    }
+  `;
+  styleEl.textContent += ` #hours-sidebar, #hours-sidebar .cell { background: var(--table-bg) !important; background-color: var(--table-bg) !important; }`;
+  // ВИПРАВЛЕНО: Додано селектор .day-column:not(.today-col), щоб зробити прозорими самі стовпці, які перекривали фото білим фоном
+  setTimeout(() => {
+  console.log('STYLE AFTER 1s:', doc.getElementById('global-photo-style')); // ВИПРАВЛЕНО: Замінено document на doc для повної відповідності контексту
+}, 1000);
+});
+
+// КНОПКА ВИДАЛЕННЯ ФОТО (✕)
+document.getElementById('clear-table-bg-file')?.addEventListener('click', function() {
+  const fileInput = document.getElementById('table-bg-file');
+  if (fileInput) fileInput.value = ""; 
+  
+  const nameLabel = document.getElementById('table-bg-name');
+  if (nameLabel) nameLabel.textContent = "";
+
+  // Повністю видаляємо фото-стилі, повертаючи колір із налаштувань
+  const iframe = document.getElementById('iFrameResizer0');
+  const doc = iframe?.contentDocument || iframe?.contentWindow?.document || document; // ВИПРАВЛЕНО: Ініціалізовано doc, щоб уникнути ReferenceError при видаленні фото
+  doc.getElementById('global-photo-style')?.remove();
+});
+
+// АВТОЗБЕРЕЖЕННЯ ТА ВІДНОВЛЕННЯ З 0% НАВАНТАЖЕННЯ НА CPU
+(() => {
+  const saved = localStorage.getItem('saved-photo-css');
+  const d = document.getElementById('iFrameResizer0')?.contentDocument || document;
+  if (saved) {
+    let s = d.getElementById('global-photo-style') || d.createElement('style');
+    s.id = 'global-photo-style'; s.textContent = saved;
+    d.head.appendChild(s);
+  }
+  new MutationObserver(() => {
+    const s = d.getElementById('global-photo-style');
+    if (s?.textContent) localStorage.setItem('saved-photo-css', s.textContent);
+  }).observe(d.head, { childList: true, subtree: true });
+})();
+document.getElementById('clear-table-bg-file')?.addEventListener('click', () => {
+  localStorage.removeItem('saved-photo-css');
+});

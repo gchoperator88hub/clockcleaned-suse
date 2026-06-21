@@ -374,3 +374,11 @@ input[type="color"] { border: none; width: 35px; height: 35px; cursor: pointer; 
     background-color: var(--v-today-c-val, #6264a7) !important;
     background: var(--v-today-c-val, #6264a7) !important;
 }
+/* Апаратне прискорення фону: 0% навантаження на процесор */
+.grid-container, #grid-table, .timetable-grid {
+  background-size: cover !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+  will-change: transform; 
+  transform: translateZ(0);
+}
