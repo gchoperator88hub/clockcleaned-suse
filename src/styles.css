@@ -297,7 +297,7 @@ input[type="color"] { border: none; width: 35px; height: 35px; cursor: pointer; 
  padding: 30px !important;
  border-radius: 12px !important;
  z-index: 4002 !important;
- background: #ffffff !important; 
+ background: var(--alarm-card-bg-val, #2ecc71) !important; 
  
  /* ЗВ'ЯЗОК З ПАНЕЛЛЮ: Швидкість миготіння тепер чітко підключена до вашого повзунка */
  animation: alarmPopupBlink var(--flash-speed, 0.5s) infinite steps(1) !important;

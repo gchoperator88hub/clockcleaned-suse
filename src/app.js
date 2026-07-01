@@ -429,6 +429,7 @@ dayNoteSave.onclick = () => {
      document.documentElement.style.setProperty(`--${cssVarName}`, finalValue + unit);
      if (id === "v-table-bg") document.querySelectorAll(".day-column .cell, #hours-sidebar .cell").forEach(c => c.style.backgroundColor = finalValue);
      if (id === "v-clk-bg") { const face = document.getElementById("face"); if (face) face.style.backgroundColor = finalValue; }
+     if (id === "v-alarm-card-bg") document.documentElement.style.setProperty("--alarm-card-bg-val", finalValue);
      if (id === "v-today-col-bg") document.querySelectorAll(".day-column.today-col .cell").forEach(c => c.style.setProperty("background-color", finalValue, "important"));
      if (id === "v-num-fs" || id === "v-dig-fs") document.documentElement.style.setProperty(`--${cssVarName}`, finalValue + "rem");
 
@@ -1178,3 +1179,76 @@ document.getElementById('clear-table-bg-file')?.addEventListener('click', functi
 document.getElementById('clear-table-bg-file')?.addEventListener('click', () => {
   localStorage.removeItem('saved-photo-css');
 });
+// =========================================================================
+// ЕНЕРГОЕФЕКТИВНЕ НАКЛАДАННЯ 1 ФОТО НА ГОДИННИК (БЕЗ НАВАНТАЖЕННЯ НА CPU)
+// =========================================================================
+
+// 1. Обробник завантаження: автоматично видаляє старе фото і ставить нове
+document.getElementById('clk-bg-file')?.addEventListener('change', async function(e) {
+  const iframe = document.getElementById('iFrameResizer0');
+  const doc = iframe?.contentDocument || iframe?.contentWindow?.document || document;
+  const file = e.target.files[0]; // Беремо рівно один файл
+  if (!file) return;
+  
+  // Показуємо ім'я нового файлу в меню
+  const nameLabel = document.getElementById('clk-bg-name');
+  if (nameLabel) nameLabel.textContent = file.name;
+
+  // Створюємо легке посилання на фото в пам'яті (RAM)
+  const blobUrl = await new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result);
+    r.readAsDataURL(file);
+  });
+
+  // Створюємо або оновлюємо ізольований CSS-стиль для круглого віджета #face
+  let styleEl = doc.getElementById('global-clock-photo-style');
+  if (!styleEl) {
+    styleEl = doc.createElement('style');
+    styleEl.id = 'global-clock-photo-style';
+    doc.head.appendChild(styleEl);
+  }
+
+  // МІНІМАЛЬНА ЗМІНА: додано правило відключення фото, якщо активується інлайн-стиль анімації миготіння
+  styleEl.textContent = `
+    #face:not(.clock-blink-active):not([style*="opacity"]) { 
+      background-image: url(${blobUrl}) !important; 
+      background-size: cover !important; 
+      background-position: center !important;
+      background-repeat: no-repeat !important;
+    }
+  `;
+});
+
+// 2. Кнопка видалення (✕): повністю очищує фото і миттєво повертає вибраний колір
+document.getElementById('clear-clk-bg-file')?.addEventListener('click', function() {
+  const fileInput = document.getElementById('clk-bg-file');
+  if (fileInput) fileInput.value = ""; 
+  
+  const nameLabel = document.getElementById('clk-bg-name');
+  if (nameLabel) nameLabel.textContent = "";
+
+  const iframe = document.getElementById('iFrameResizer0');
+  const doc = iframe?.contentDocument || iframe?.contentWindow?.document || document;
+
+  // Видаляємо CSS-стиль фото, повертаючи колір палітри за замовчуванням
+  doc.getElementById('global-clock-photo-style')?.remove();
+  localStorage.removeItem('saved-clock-photo-css');
+});
+
+// 3. Автозбереження фону годинника та відновлення після оновлення сторінки (0% CPU)
+(() => {
+  const saved = localStorage.getItem('saved-clock-photo-css');
+  const d = document.getElementById('iFrameResizer0')?.contentDocument || document;
+  if (saved) {
+    let s = d.getElementById('global-clock-photo-style') || d.createElement('style');
+    s.id = 'global-clock-photo-style'; 
+    s.textContent = saved;
+    d.head.appendChild(s);
+  }
+
+  new MutationObserver(() => {
+    const s = d.getElementById('global-clock-photo-style');
+    if (s?.textContent) localStorage.setItem('saved-clock-photo-css', s.textContent);
+  }).observe(d.head, { childList: true, subtree: true });
+})();

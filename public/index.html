@@ -401,6 +401,14 @@
         <div class="row">
           Фон <input type="color" id="v-clk-bg" value="#ffffff" />
         </div>
+        <div class="row" style="display: flex; align-items: center; gap: 8px;">
+ <label for="clk-bg-file" style="cursor: pointer; padding: 2px 8px; background: #444; color: #fff; border-radius: 4px; font-size: 12px; display: inline-block;">
+ Фото годинника
+ </label> 📁
+ <input type="file" id="clk-bg-file" accept="image/png, image/jpeg, image/webp" style="display: none;">
+ <span id="clk-bg-name" style="font-size: 11px; color: #aaa; margin-left: 5px; max-width: 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: middle;"></span>
+ <button id="clear-clk-bg-file" style="margin-left: 5px; font-size: 11px; background: #ff4444; color: white; border: none; border-radius: 3px; cursor: pointer; padding: 2px 6px;">✕</button>
+</div>
         <div class="row">
           Рамка <input type="color" id="v-clk-brd-c" value="#6264a7" />
         </div>
@@ -641,6 +649,9 @@
  <div class="row" style="margin-top: 12px; border-top: 1px dashed #eee; padding-top: 12px;">
  Колір спалаху 1 <input type="color" value="#ff0000" oninput="document.documentElement.style.setProperty('--flash-c1', this.value); localStorage.setItem('fc1', this.value)">
  </div>
+<div class="row">
+ Фон картки будильника <input type="color" id="v-alarm-card-bg" value="#2ecc71" />
+ </div>
  <div class="row">
  Колір спалаху 2 <input type="color" id="v-h-blink-c2" value="#000000" oninput="document.documentElement.style.setProperty('--flash-c2', this.value); localStorage.setItem('v-h-blink-c2-val', this.value); localStorage.setItem('fc2', this.value)">
  </div>
@@ -761,28 +772,65 @@ window.customActiveWeekDate = null;
 
 // 1. Функція точного отримання дати з кнопки дня тижня
 function getCleanDateKeyForCell(cell) {
-  // Шукаємо число дня всередині кнопки (текст після назви дня, наприклад "02")
-  const match = cell.textContent.match(/\d+/);
-  if (!match) return null;
-  const dayNum = parseInt(match[0], 10);
-
-  // Визначаємо індекс стовпчика (1 = Пн, 2 = Вт ... 7 = Нд)
-  const cellIdx = Array.from(cell.parentNode.children).indexOf(cell);
-  if (cellIdx < 1 || cellIdx > 7) return null;
-
-  // Вираховуємо правильний місяць і рік для цього дня тижня
-  let currentYear = typeof selectedYear !== 'undefined' ? selectedYear : new Date().getFullYear();
-  let currentMonth = new Date().getMonth(); // Значення за замовчуванням
-  
-  if (typeof monday !== 'undefined' && monday instanceof Date) {
-    const targetDate = new Date(monday.getTime());
-    targetDate.setDate(monday.getDate() + (cellIdx - 1));
-    currentYear = targetDate.getFullYear();
-    currentMonth = targetDate.getMonth();
-  }
-
-  // Повертаємо чистий ключ у форматі головного календаря: Рік-Місяць-День
-  return `${currentYear}-${currentMonth}-${dayNum}`;
+ // Шукаємо число дня всередині кнопки (текст після назви дня, наприклад "02")
+ const match = cell.textContent.match(/\d+/);
+ if (!match) return null;
+ const dayNum = parseInt(match[0], 10);
+ 
+ // Визначаємо індекс стовпчика (1 = Пн, 2 = Вт ... 7 = Нд)
+ const cellIdx = Array.from(cell.parentNode.children).indexOf(cell);
+ if (cellIdx < 1 || cellIdx > 7) return null;
+ 
+ // Зчитуємо всі числа днів поточного тижня з сусідніх кнопок шапки
+ const allCells = Array.from(cell.parentNode.children).slice(1, 8);
+ const weekDays = allCells.map(c => {
+ const m = c.textContent.match(/\d+/);
+ return m ? parseInt(m[0], 10) : 0;
+ });
+ 
+ // Визначаємо базовий рік та місяць
+ let currentYear = typeof selectedYear !== 'undefined' ? selectedYear : new Date().getFullYear();
+ let currentMonth = new Date().getMonth(); // Поточний місяць (наприклад, Липень = 6)
+ 
+ // Шукаємо точку зламу дат (де числа різко падають з великого на 1)
+ let splitIndex = -1;
+ for (let i = 0; i < weekDays.length - 1; i++) {
+ if (weekDays[i] > weekDays[i + 1]) {
+ splitIndex = i + 1; // Індекс кнопки (0 = Пн, 1 = Вт і т.д.), де почався новий місяць
+ break;
+ }
+ }
+ 
+ // Індекс поточної клітинки у масиві від 0 до 6
+ const currentDayIndex = cellIdx - 1;
+ 
+ // ЯКЩО Є ЗЛАМ ДАТ (тиждень розбитий на два місяці):
+ if (splitIndex !== -1) {
+ if (currentDayIndex < splitIndex) {
+ // Дні ДО зламу (наприклад, 29 та 30 число) — це попередній місяць
+ const prevDate = new Date(currentYear, currentMonth - 1, 1);
+ currentYear = prevDate.getFullYear();
+ currentMonth = prevDate.getMonth();
+ } else {
+ // Дні ПІСЛЯ зламу (наприклад, 1, 2, 3 число) — це основний або наступний місяць
+ // Залишаємо базовий currentMonth
+ }
+ } else {
+ // ЯКЩО ЗЛАМУ НЕМАЄ (всі 7 днів належать одному місяцю):
+ // Але якщо ми дивимося на маленькі числа (1-7), а на комп'ютері кінець місяця (або навпаки)
+ const today = new Date();
+ if (dayNum <= 7 && today.getDate() >= 20) {
+ currentMonth += 1;
+ } else if (dayNum >= 20 && today.getDate() <= 7) {
+ currentMonth -= 1;
+ }
+ const normalDate = new Date(currentYear, currentMonth, 1);
+ currentYear = normalDate.getFullYear();
+ currentMonth = normalDate.getMonth();
+ }
+ 
+ // Повертаємо точний ключ у форматі головного календаря: Рік-Місяць-День
+ return `${currentYear}-${currentMonth}-${dayNum}`;
 }
 
 /// 2. Безперервне автоматичне підсвічування комірок днів тижня (жовтий колір) з єдиної бази
