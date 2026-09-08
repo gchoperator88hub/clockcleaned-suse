@@ -2,6 +2,8 @@
   "name": "clockcleaned",
   "version": "1.0.0",
   "private": true,
+  "description": "My Hugging Face Clock App for openSUSE",
+  "author": "gchoperator88hub <your-email@example.com>",
   "main": "main.js",
   "scripts": {
     "dev": "npx serve public -l 7860",
