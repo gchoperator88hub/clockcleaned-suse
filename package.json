@@ -23,7 +23,8 @@
     },
     "linux": {
       "target": [
-        "rpm"
+        "rpm",
+        "AppImage"
       ],
       "category": "Utility"
     }
