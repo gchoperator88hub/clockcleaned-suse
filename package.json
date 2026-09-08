@@ -2,34 +2,33 @@
   "name": "clockcleaned",
   "version": "1.0.0",
   "private": true,
-
   "main": "main.js",
-
   "scripts": {
     "dev": "npx serve public -l 7860",
     "build": "node ./scripts/build.mjs",
     "electron": "electron ."
   },
-
   "build": {
     "appId": "com.clockcleaned.app",
     "productName": "ClockCleaned",
-
     "files": [
       "dist/**/*",
       "main.js",
       "package.json"
     ],
-
     "win": {
       "target": "nsis"
+    },
+    "linux": {
+      "target": [
+        "rpm"
+      ],
+      "category": "Utility"
     }
   },
-
   "dependencies": {
     "serve": "^14.2.0"
   },
-
   "devDependencies": {
     "esbuild": "^0.25.9",
     "electron": "28.2.0",
