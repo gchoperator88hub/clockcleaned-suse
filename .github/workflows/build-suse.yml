@@ -27,12 +27,12 @@ jobs:
         run: |
           sudo apt-get update 
           sudo apt-get install -y rpm flatpak flatpak-builder imagemagick
-          # Set up the universal Flathub repository
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org
+          # Fixed Flathub URL to resolve the GPG summary error
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
       - name: Install Required Flatpak Runtime Environments
         run: |
-          # Install the specific runtime frameworks needed by electron-builder
+          # Install runtime and SDK elements directly
           flatpak install --user -y flathub org.freedesktop.Platform//23.08
           flatpak install --user -y flathub org.freedesktop.Sdk//23.08
 
