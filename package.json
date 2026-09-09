@@ -22,12 +22,12 @@
       "target": "nsis"
     },
     "linux": {
+      "category": "Utility",
       "target": [
         "rpm",
         "AppImage",
         "flatpak"
-      ],
-      "category": "Utility"
+      ]
     },
     "flatpak": {
       "runtimeVersion": "23.08"
