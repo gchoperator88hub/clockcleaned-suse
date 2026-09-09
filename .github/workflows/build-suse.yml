@@ -27,7 +27,14 @@ jobs:
         run: |
           sudo apt-get update 
           sudo apt-get install -y rpm flatpak flatpak-builder imagemagick
+          # Set up the universal Flathub repository
           flatpak remote-add --user --if-not-exists flathub https://flathub.org
+
+      - name: Install Required Flatpak Runtime Environments
+        run: |
+          # Install the specific runtime frameworks needed by electron-builder
+          flatpak install --user -y flathub org.freedesktop.Platform//23.08
+          flatpak install --user -y flathub org.freedesktop.Sdk//23.08
 
       - name: Generate Required App Icon
         run: |
