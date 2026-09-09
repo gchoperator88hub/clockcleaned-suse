@@ -1,4 +1,4 @@
-name: Build openSUSE App Only
+name: Build openSUSE and Universal Linux App
 
 on:
   push:
@@ -23,16 +23,20 @@ jobs:
       - name: Build frontend
         run: node ./scripts/build.mjs
 
-      - name: Install RPM build tools
-        run: sudo apt-get update && sudo apt-get install -y rpm
+      - name: Install RPM and Flatpak build tools
+        run: |
+          sudo apt-get update 
+          sudo apt-get install -y rpm flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org
 
-      - name: Build Electron RPM and AppImage installers
-        run: npx electron-builder --linux rpm AppImage --publish never
+      - name: Build Electron RPM, AppImage, and Flatpak installers
+        run: npx electron-builder --linux rpm AppImage flatpak --publish never
 
-      - name: Upload openSUSE installers
+      - name: Upload Linux Installers
         uses: actions/upload-artifact@v4
         with:
-          name: opensuse-installer
+          name: linux-installers
           path: |
             dist/*.rpm
             dist/*.AppImage
+            dist/*.flatpak

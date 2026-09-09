@@ -2,7 +2,7 @@
   "name": "clockcleaned",
   "version": "1.0.0",
   "private": true,
-  "description": "My Hugging Face Clock App for openSUSE",
+  "description": "My Hugging Face Clock App for openSUSE and Linux Mint",
   "author": "gchoperator88hub <test@test.com>",
   "main": "main.js",
   "scripts": {
@@ -24,9 +24,14 @@
     "linux": {
       "target": [
         "rpm",
-        "AppImage"
+        "AppImage",
+        "flatpak"
       ],
       "category": "Utility"
+    },
+    "flatpak": {
+      "id": "com.clockcleaned.app",
+      "runtimeVersion": "23.08"
     }
   },
   "dependencies": {
