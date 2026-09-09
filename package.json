@@ -30,7 +30,6 @@
       "category": "Utility"
     },
     "flatpak": {
-      "id": "com.clockcleaned.app",
       "runtimeVersion": "23.08"
     }
   },
