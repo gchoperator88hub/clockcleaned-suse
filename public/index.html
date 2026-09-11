@@ -492,6 +492,7 @@
         <div class="row">
           Колір цифр <input type="color" id="v-num-c" value="#323130" />
         </div>
+        <div class="row">Колір місяця на годиннику <input type="color" id="v-cur-m-clock" value="#ffcc00" /></div>
         <div class="row">
           Розмір цифр
           <input type="range" id="v-num-fs" min="0.4" max="2" step="0.1" value="0.8" />
@@ -1649,5 +1650,112 @@ document.addEventListener('DOMContentLoaded', () => {
   };
 })();
 </script>
+<!-- БЛОК НАЛАШТУВАННЯ КОЛОРУ, ТОВЩИНИ ТА ДОВЖИНИ ВСІХ СТРІЛОК ГОДИННИКА -->
+<script>
+window.addEventListener('DOMContentLoaded', () => {
+  // 1. Примусово нейтралізуємо старі інлайн-стилі та підключаємо стрілки до нових змінних
+  const styleEl = document.createElement('style');
+  styleEl.textContent = `
+    #h-h { background: var(--h-hand-c, #323130) !important; width: var(--h-hand-w, 8px) !important; height: var(--h-hand-h, 26%) !important; }
+    #m-h { background: var(--m-hand-c, #605e5c) !important; width: var(--m-hand-w, 5px) !important; height: var(--m-hand-h, 38%) !important; opacity: 1 !important; filter: none !important; }
+    #s-h { background: var(--s-hand-c, #d93b3b) !important; width: var(--s-hand-w, 2px) !important; height: var(--s-hand-h, 45%) !important; }
+  `;
+  document.head.appendChild(styleEl);
 
+  // 2. Знаходимо заголовок «Стрілки & Цифри» у вашому меню та додаємо під нього нові повзунки
+  const targetHeader = Array.from(document.querySelectorAll('#panel h4')).find(el => el.textContent.includes('Стрілки'));
+  if (targetHeader) {
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = "border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px;";
+    wrapper.innerHTML = `
+      <div class="row">Годинна (колір) <input type="color" id="v-h-hand-c" value="#323130" /></div>
+      <div class="row">Годинна (товщина) <input type="range" id="v-h-hand-w" min="1" max="15" value="8" /></div>
+      <div class="row">Годинна (довжина %) <input type="range" id="v-h-hand-h" min="15" max="50" value="26" /></div>
+      <div class="row">Хвилинна (колір) <input type="color" id="v-m-hand-c" value="#605e5c" /></div>
+      <div class="row">Хвилинна (товщина) <input type="range" id="v-m-hand-w" min="1" max="12" value="5" /></div>
+      <div class="row">Хвилинна (довжина %) <input type="range" id="v-m-hand-h" min="20" max="50" value="38" /></div>
+      <div class="row">Секундна (колір) <input type="color" id="v-s-hand-c" value="#d93b3b" /></div>
+      <div class="row">Секундна (товщина) <input type="range" id="v-s-hand-w" min="1" max="8" value="2" /></div>
+      <div class="row">Секундна (довжина %) <input type="range" id="v-s-hand-h" min="25" max="50" value="45" /></div>
+      <div class="row">PM цифри (колір) <input type="color" id="v-pm-num-c" value="#888888" /></div>
+      <div class="row">PM цифри (розмір px) <input type="range" id="v-pm-num-fs" min="10" max="30" value="14" /></div>
+    `;
+    targetHeader.after(wrapper);
+  }
+});
+</script>
+
+<!-- АВТОНОМНИЙ БЛОК ДЛЯ PM-ЦИФР ГОДИННИКА (13-24) В ДВА КОЛА -->
+<script>
+(() => {
+  // 1. Динамічно будуємо внутрішнє симетричне коло PM-цифр (13-24)
+  window.addEventListener('DOMContentLoaded', () => {
+    setTimeout(() => {
+      const face = document.getElementById('face');
+      if (!face) return;
+
+      // Отримуємо поточний базовий розмір шрифту великих цифр
+      const baseFs = parseFloat(localStorage.getItem('v-num-size-custom')) || 32;
+
+      for (let i = 1; i <= 12; i++) {
+        const pmNum = i + 12; // 13, 14, 15...
+        
+        const n = document.createElement("div");
+        n.className = "num-pm-container";
+        
+        // Повністю копіюємо оригінальний математичний принцип повороту вашого додатка,
+        // але зсуваємо цифри ближче до центру за допомогою padding/inset
+        n.style.cssText = `
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          text-align: center;
+          box-sizing: border-box;
+          pointer-events: none;
+          transform: rotate(${i * 30}deg);
+          padding: calc(${baseFs}px * 1.5) 12px 12px 12px; /* Радіус кола: PM-цифри стають строго під AM-цифрами */
+        `;
+        
+        n.innerHTML = `
+          <span class="pm-number-mark" style="
+            display: inline-block;
+            font-weight: 800;
+            line-height: 1;
+            transform: rotate(-${i * 30}deg); /* Повертаємо текст назад, щоб він стояв рівно */
+            font-size: var(--pm-num-fs, 14px) !important;
+            color: var(--pm-num-c, #888888) !important;
+          ">
+            ${pmNum}
+          </span>
+        `;
+        face.appendChild(n);
+      }
+      
+      // Відновлюємо налаштування з пам'яті браузера при старті
+      const savedC = localStorage.getItem('v-pm-num-c') || '#888888';
+      const savedFs = localStorage.getItem('v-pm-num-fs') || '14';
+      
+      if (document.getElementById('v-pm-num-c')) document.getElementById('v-pm-num-c').value = savedC;
+      if (document.getElementById('v-pm-num-fs')) document.getElementById('v-pm-num-fs').value = savedFs;
+      
+      document.documentElement.style.setProperty('--pm-num-c', savedC);
+      document.documentElement.style.setProperty('--pm-num-fs', savedFs + 'px');
+    }, 500);
+  });
+
+  // 2. Живе відстеження руху нових повзунків та миттєве оновлення екрана
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'v-pm-num-c') {
+      localStorage.setItem('v-pm-num-c', e.target.value);
+      document.documentElement.style.setProperty('--pm-num-c', e.target.value);
+    }
+    if (e.target.id === 'v-pm-num-fs') {
+      localStorage.setItem('v-pm-num-fs', e.target.value);
+      document.documentElement.style.setProperty('--pm-num-fs', e.target.value + 'px');
+    }
+  });
+})();
+</script>
+
+  
 </html>

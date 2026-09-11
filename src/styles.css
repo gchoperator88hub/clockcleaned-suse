@@ -176,9 +176,19 @@ body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Seg
   border-bottom: var(--alarm-marker-size) solid var(--alarm-marker-c);
   filter: drop-shadow(0 2px 2px rgba(0,0,0,0.2));
 }
+/* Базові параметри для гнучкого керування стрілками */
+:root {
+  --h-hand-c: #323130; --h-hand-w: 8px; --h-hand-h: 26%;
+  --m-hand-c: #605e5c; --m-hand-w: 5px; --m-hand-h: 38%;
+  --s-hand-c: #d93b3b; --s-hand-w: 2px; --s-hand-h: 45%;
+}
+/* Переведення стрілок на роботу з новими параметрами */
 .hand { position: absolute; bottom: 50%; left: 50%; transform-origin: bottom; 
 transform: translateX(-50%); border-radius: 10px; }
-#m-h { background: var(--h-hand) !important; opacity: 1 !important; }
+#h-h { background: var(--h-hand-c) !important; width: var(--h-hand-w) !important; height: var(--h-hand-h) !important; }
+#m-h { background: var(--m-hand-c) !important; width: var(--m-hand-w) !important; height: var(--m-hand-h) !important; opacity: 1 !important; }
+#s-h { background: var(--s-hand-c) !important; width: var(--s-hand-w) !important; height: var(--s-hand-h) !important; }
+
 .num { position: absolute; width: 100%; height: 100%; text-align: center; padding: 12px; box-sizing: border-box; font-weight: 700; font-size: var(--num-fs); color: var(--num-c); }
 .digit-info { margin-top: var(--widget-gap); padding: 0; background: transparent; border: none; font-weight: 800; font-size: var(--dig-fs); color: var(--dig-c); }
 .digit-row { display: flex; gap: 10px; align-items: baseline; justify-content: center; width: 100%; max-width: 100vw; }

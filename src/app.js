@@ -1069,7 +1069,7 @@ if (dateUnderClock) {
  
  transform:rotate(-${i * 30}deg)
  ${i === currentMonth
- ? `;color:#ffcc00;font-size:2.4rem !important;font-weight:900;transform:rotate(-${i * 30}deg) scale(1.45)`
+ ? `;color:var(--cur-m-clock, #ffcc00);font-size:2.4rem !important;font-weight:900;transform:rotate(-${i * 30}deg) scale(1.45)`
  : ""}
  ">
  ${i}
@@ -1252,3 +1252,49 @@ document.getElementById('clear-clk-bg-file')?.addEventListener('click', function
     if (s?.textContent) localStorage.setItem('saved-clock-photo-css', s.textContent);
   }).observe(d.head, { childList: true, subtree: true });
 })();
+
+
+/* НЕЗАЛЕЖНИЙ ПЕРЕХОПЛЮВАЧ НАЛАШТУВАНЬ ВСІХ СТРІЛОК ГОДИННИКА (ЗАХИСТ ВІД ЗЛАМІВ) */
+document.addEventListener("input", (e) => {
+  const id = e.target?.id;
+  if (!id || !id.startsWith("v-") || !id.includes("hand")) return;
+  
+  // КРИТИЧНО: Повністю блокуємо втручання оригінального ядра, щоб воно не додавало "px" до кольорів
+  e.stopImmediatePropagation();
+  
+  const value = e.target.value;
+  localStorage.setItem(id, value);
+  
+  const cssVarName = id.slice(2); // Відрізаємо "v-"
+  let unit = "";
+  
+  if (e.target.type === "range") {
+    unit = id.endsWith("-h") ? "%" : "px"; // Довжині — відсотки, товщині — пікселі
+  }
+  
+  document.documentElement.style.setProperty(`--${cssVarName}`, value + unit);
+}, true); // Фаза перехоплення (true) гарантує пріоритет над базовими скриптами
+
+/* Автоматичне відновлення стану стрілок годинника при кожному старті браузера */
+document.addEventListener("DOMContentLoaded", () => {
+  const handInputIds = ["v-h-hand-c", "v-h-hand-w", "v-h-hand-h", "v-m-hand-c", "v-m-hand-w", "v-m-hand-h", "v-s-hand-c", "v-s-hand-w", "v-s-hand-h"];
+  
+  // Даємо базовому DOM-дереву 100мс повністю збудуватися, щоб уникнути скидання розмірів
+  setTimeout(() => {
+    handInputIds.forEach(id => {
+      const savedValue = localStorage.getItem(id);
+      if (savedValue !== null) {
+        const inputEl = document.getElementById(id);
+        if (inputEl) inputEl.value = savedValue;
+        
+        const cssVarName = id.slice(2); // Відрізаємо "v-"
+        let unit = "";
+        
+        if (id.endsWith("-w")) unit = "px";
+        if (id.endsWith("-h")) unit = "%";
+        
+        document.documentElement.style.setProperty(`--${cssVarName}`, savedValue + unit);
+      }
+    });
+  }, 100);
+});
