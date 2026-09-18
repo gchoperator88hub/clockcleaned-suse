@@ -1756,6 +1756,226 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 })();
 </script>
+<!-- АВТОНОМНИЙ ЕКО-БЛОК: ІНТЕРВАЛЬНИЙ БУДИЛЬНИК (0% CPU У ФОНІ) -->
+<script>
+(() => {
+  window.addEventListener('DOMContentLoaded', () => {
+    const oldInput = document.getElementById('alarm-in');
+    if (!oldInput) return;
+    const oldRow = oldInput.closest('.row');
+    if (!oldRow) return;
 
-  
+    // 1. Створення легких DOM-елементів без використання важких CSS-бібліотек
+    const wrapper = document.createElement('div');
+    wrapper.id = 'alarm-interval-eco-ext';
+    wrapper.style.cssText = 'border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px; width: 100%; font-family: sans-serif;';
+
+    wrapper.innerHTML = `
+      <div class="row" style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem;">
+        <span>Тип встановлення:</span>
+        <select id="ext-mode-sel" style="padding: 4px; border-radius: 4px; border: 1px solid #edebe9; font-weight: bold; color: #323130; background: #fff;">
+          <option value="point">Точка часу (HH:MM)</option>
+          <option value="interval">Інтервал (Через X хв)</option>
+        </select>
+      </div>
+      
+      <div id="ext-int-row" style="display: none; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 0.9rem;">
+        <span>Дзвонити через:</span>
+        <div style="display: inline-flex; align-items: center; gap: 4px;">
+          <input type="number" id="ext-h" min="0" max="23" value="0" style="width: 45px; text-align: center; font-weight: bold; padding: 3px; border: 1px solid #edebe9; border-radius: 4px; background:#fff; color:#000;" placeholder="г">
+          <span style="font-weight: bold; color: #323130;">г</span>
+          <input type="number" id="ext-m" min="0" max="59" value="10" style="width: 45px; text-align: center; font-weight: bold; padding: 3px; border: 1px solid #edebe9; border-radius: 4px; background:#fff; color:#000;" placeholder="хв">
+          <span style="font-weight: bold; color: #323130;">хв</span>
+        </div>
+        <button type="button" id="ext-ok" style="padding: 4px 10px; background: #6264a7; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;">OK</button>
+      </div>
+    `;
+
+    oldRow.before(wrapper);
+
+    const modeSel = document.getElementById('ext-mode-sel');
+    const intRow = document.getElementById('ext-int-row');
+    const valH = document.getElementById('ext-h');
+    const valM = document.getElementById('ext-m');
+    const btnOk = document.getElementById('ext-ok');
+
+    // 2. Енергоефективне швидке перемикання режимів без MutationObserver
+    const applyViewMode = (mode) => {
+      localStorage.setItem('ext_alarm_entry_mode', mode);
+      if (mode === 'interval') {
+        oldRow.style.setProperty('display', 'none', 'important');
+        intRow.style.setProperty('display', 'flex', 'important');
+      } else {
+        oldRow.style.setProperty('display', 'flex', 'important');
+        intRow.style.setProperty('display', 'none', 'important');
+      }
+    };
+
+    // Відновлення стану при завантаженні (з RAM або диска)
+    const activeMode = localStorage.getItem('ext_alarm_entry_mode') || 'point';
+    modeSel.value = activeMode;
+    applyViewMode(activeMode);
+
+    modeSel.addEventListener('change', (e) => applyViewMode(e.target.value));
+
+    // 3. Розрахунок часу: Виконується строго один раз за кліком (0% CPU у спокої)
+    const runCalculation = () => {
+      let h = parseInt(valH.value, 10) || 0;
+      let m = parseInt(valM.value, 10) || 0;
+
+      if (h === 0 && m === 0) { m = 1; valM.value = 1; } // Захист від зависання
+
+      const d = new Date();
+      d.setHours(d.getHours() + h);
+      d.setMinutes(d.getMinutes() + m);
+
+      const resStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+
+      // Передача даних у базове ядро
+      oldInput.value = resStr;
+      oldInput.dispatchEvent(new Event('input', { bubbles: true }));
+      oldInput.dispatchEvent(new Event('change', { bubbles: true }));
+      localStorage.setItem('alarm-in', resStr);
+
+      const mainBtn = document.getElementById('alarm-time-btn');
+      if (mainBtn) mainBtn.textContent = resStr;
+
+      const panel = document.getElementById('panel');
+      if (panel) {
+        panel.classList.remove('open');
+        panel.setAttribute('aria-hidden', 'true');
+      }
+    };
+
+    btnOk.addEventListener('click', runCalculation);
+    [valH, valM].forEach(inp => {
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); runCalculation(); } });
+    });
+
+    // 4. Подієве перехоплення кнопкою «Скинути будильник» для миттєвого очищення полів
+    const resetBtn = Array.from(document.querySelectorAll('#panel button')).find(b => b.textContent.includes('Скинути'));
+    if (resetBtn) {
+      resetBtn.addEventListener('click', () => {
+        valH.value = '0';
+        valM.value = '10';
+      });
+    }
+  });
+})();
+</script>
+
+<!-- АВТОНОМНИЙ МІНІ-БЛОК ДЛЯ ДРУГОГО НЕЗАЛЕЖНОГО БУДИЛЬНИКА (ALARM 2) -->
+<script>
+(() => {
+  window.addEventListener('DOMContentLoaded', () => {
+    const firstBtn = document.getElementById('alarm-time-btn'), panel = document.getElementById('panel');
+    if (!firstBtn || !panel) return;
+
+    let db2 = null, snooze2 = parseInt(localStorage.getItem('alarm2-snz')) || 0, act2 = localStorage.getItem('alarm2-v') || '';
+    const audio2 = new Audio(); audio2.loop = true;
+
+    // 1. Ізольована IndexedDB
+    const dbReq2 = indexedDB.open('Alarm2FileDB', 1);
+    dbReq2.onupgradeneeded = e => e.target.result.createObjectStore('mp3_store2');
+    dbReq2.onsuccess = e => {
+      db2 = e.target.result;
+      db2.transaction('mp3_store2').objectStore('mp3_store2').get('track2').onsuccess = ev => {
+        if (ev.target.result) document.getElementById('db2-msg').textContent = "🎵 MP3 збережено.";
+      };
+    };
+
+    // 2. Створення Модалки
+    const modal2 = document.createElement('div'); modal2.id = 'alarm2-modal';
+    modal2.style.cssText = 'position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:99999; background:#ff0000 !important; font-family:sans-serif;';
+    modal2.innerHTML = '<div id="alarm2-card-bg" style="background:#2ecc71; padding:30px; border-radius:12px; text-align:center; color:white; min-width:320px;"><h2>БУДИЛЬНИК №2</h2><p id="alarm2-sub-txt" style="font-weight:bold; margin-bottom:15px;">Час настав!</p><div style="margin-bottom:15px;"><button class="sz2" data-m="5">5м</button><button class="sz2" data-m="10">10м</button><button class="sz2" data-m="20">20м</button><button class="sz2" data-m="30">30м</button><button class="sz2" data-m="60">60м</button></div><button id="alarm2-stop-btn" style="padding:10px; font-weight:bold; background:white; color:#323130; border:none; border-radius:6px; cursor:pointer; width:100%;">STOP</button></div><style>.sz2{padding:3px 6px; margin:2px; font-size:0.8rem; font-weight:bold; background:rgba(255,255,255,0.2); border:1px solid white; border-radius:4px; color:white; cursor:pointer;}</style>';
+    document.body.appendChild(modal2);
+
+    const close2 = () => { audio2.pause(); audio2.currentTime = 0; modal2.style.setProperty('display', 'none', 'important'); };
+    document.getElementById('alarm2-stop-btn').onclick = () => { snooze2 = 0; localStorage.removeItem('alarm2-snz'); close2(); };
+
+    modal2.querySelectorAll('.sz2').forEach(b => {
+      b.onclick = (e) => {
+        snooze2 = Date.now() + (parseInt(e.target.getAttribute('data-m')) || 5) * 60 * 1000;
+        localStorage.setItem('alarm2-snz', snooze2);
+        const d = new Date(snooze2); updateUI2(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')); close2();
+      };
+    });
+
+    // 3. Друга кнопка на віджеті годинника
+    const alarm2Btn = document.createElement('button'); alarm2Btn.type = 'button'; alarm2Btn.id = 'alarm2-time-btn';
+    alarm2Btn.style.cssText = 'display:block; margin-top:6px; background:transparent !important; border:none; cursor:pointer; width:100%; text-align:center; font-weight:800; font-size:var(--alarm-txt-fs, 0.95rem);';
+    alarm2Btn.textContent = '--:--'; firstBtn.after(alarm2Btn); alarm2Btn.onclick = () => panel.classList.add('open');
+
+    // 4. Панель налаштувань
+    const wrapper2 = document.createElement('div'); wrapper2.id = 'alarm2-control-container';
+    wrapper2.style.cssText = 'border-top:2px solid #0078d4; padding-top:15px; margin-top:20px; font-family:sans-serif;';
+    wrapper2.innerHTML = '<h5 style="margin:0 0 12px 0; color:#0078d4; font-weight:bold;">Будильник №2</h5><div class="row"><select id="ext2-mode-sel"><option value="point">Точка часу</option><option value="interval">Інтервал</option></select></div><div id="ext2-point-row" class="row"><input type="time" id="alarm2-in"></div><div id="ext2-int-row" style="display:none; justify-content:space-between;"><input type="number" id="ext2-h" value="0" style="width:40px;"> г <input type="number" id="ext2-m" value="10" style="width:40px;"> хв</div><div class="row">Текст: <input type="color" id="v-alarm2-c" value="#0078d4"> Вікно: <input type="color" id="v-alarm2-bg-c" value="#2ecc71"></div><div style="margin:10px 0;"><input type="file" id="db2-file" accept=".mp3" style="display:none;" /><button id="db2-btn" type="button" style="width:100%; padding:6px; background:#2ecc71; color:#fff; border:none; font-weight:bold; cursor:pointer;">ЗАВАНТАЖИТИ MP3 2</button><div id="db2-msg" style="font-size:11px; text-align:center; margin-top:4px; color:#2ecc71; font-weight:bold;">Очікування...</div></div><button type="button" id="ext2-ok" style="padding:6px; background:#0078d4; color:white; border:none; font-weight:bold; width:100%;">OK</button>';
+    document.getElementById('alarm-interval-eco-ext')?.after(wrapper2);
+
+    const modeSel2 = document.getElementById('ext2-mode-sel'), pointRow2 = document.getElementById('ext2-point-row'), intRow2 = document.getElementById('ext2-int-row');
+    const alarm2In = document.getElementById('alarm2-in'), valH2 = document.getElementById('ext2-h'), valM2 = document.getElementById('ext2-m'), btnOk2 = document.getElementById('ext2-ok');
+
+    document.getElementById('db2-btn').onclick = () => document.getElementById('db2-file').click();
+    document.getElementById('db2-file').onchange = ev => {
+      const f = ev.target.files; if (!f || f.length === 0 || !db2) return;
+      db2.transaction('mp3_store2', 'readwrite').objectStore('mp3_store2').put(f[0], 'track2').oncomplete = () => { document.getElementById('db2-msg').textContent = "✅ Збережено: " + f[0].name; };
+    };
+
+    const toggleView2 = (m) => {
+      pointRow2.style.setProperty('display', m === 'interval' ? 'none' : 'flex', 'important');
+      intRow2.style.setProperty('display', m === 'interval' ? 'flex' : 'none', 'important');
+    };
+    modeSel2.onchange = (e) => toggleView2(e.target.value);
+
+    // Робота з кольорами
+    const cp2 = document.getElementById('v-alarm2-c'), bg2 = document.getElementById('v-alarm2-bg-c');
+    if (cp2 && bg2) {
+      cp2.value = localStorage.getItem('v-alarm2-c-val') || '#0078d4'; bg2.value = localStorage.getItem('v-alarm2-bg-val') || '#2ecc71';
+      cp2.addEventListener('input', (e) => { localStorage.setItem('v-alarm2-c-val', e.target.value); if (alarm2Btn.textContent !== '--:--') alarm2Btn.style.setProperty('color', e.target.value, 'important'); });
+      bg2.addEventListener('input', (e) => localStorage.setItem('v-alarm2-bg-val', e.target.value));
+    }
+
+    const updateUI2 = (v) => { alarm2Btn.textContent = v || '--:--'; alarm2Btn.style.setProperty('color', v ? (localStorage.getItem('v-alarm2-c-val') || '#0078d4') : 'transparent', 'important'); };
+
+    btnOk2.onclick = () => {
+      let s = alarm2In.value;
+      if (modeSel2.value === 'interval') {
+        const d = new Date(); d.setHours(d.getHours() + (parseInt(valH2.value) || 0)); d.setMinutes(d.getMinutes() + (parseInt(valM2.value) || 0));
+        s = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+      }
+      if (s) { snooze2 = 0; localStorage.removeItem('alarm2-snz'); act2 = s; localStorage.setItem('alarm2-v', s); alarm2In.value = s; updateUI2(s); panel.classList.remove('open'); }
+    };
+
+    alarm2In.onchange = () => { if (modeSel2.value === 'point') { snooze2 = 0; localStorage.removeItem('alarm2-snz'); act2 = alarm2In.value; localStorage.setItem('alarm2-v', alarm2In.value); updateUI2(alarm2In.value); } };
+
+    const oldReset = document.querySelector('button[onclick*="removeItem(\'alarm-in\')"]');
+    if (oldReset) oldReset.addEventListener('click', () => { localStorage.removeItem('alarm2-v'); localStorage.removeItem('alarm2-snz'); snooze2 = 0; act2 = ''; alarm2In.value = ''; updateUI2(''); });
+
+    // 5. Секундний Еко-Таймер (0% ЦП)
+    let lastM2 = -1;
+    setInterval(() => {
+      const t = new Date();
+      if (t.getSeconds() === 0 && t.getMinutes() !== lastM2) {
+        lastM2 = t.getMinutes();
+        let cur = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
+        if ((snooze2 > 0 && Date.now() >= snooze2) || (snooze2 === 0 && act2 === cur)) {
+          if (db2) {
+            db2.transaction('mp3_store2').objectStore('mp3_store2').get('track2').onsuccess = ev => {
+              audio2.src = ev.target.result ? URL.createObjectURL(ev.target.result) : "https://huggingface.co";
+              audio2.volume = (parseInt(document.getElementById('alarm-vol').value) || 35) / 100; audio2.play().catch(e => console.log(e));
+            };
+          }
+          document.getElementById('alarm2-card-bg').style.setProperty('background', localStorage.getItem('v-alarm2-bg-val') || '#2ecc71', 'important');
+          document.getElementById('alarm2-sub-txt').textContent = "Зараз " + cur; modal2.style.setProperty('display', 'flex', 'important');
+          localStorage.removeItem('alarm2-v'); localStorage.removeItem('alarm2-snz'); snooze2 = 0; act2 = ''; alarm2In.value = ''; updateUI2('');
+        }
+      }
+    }, 1000);
+
+    toggleView2(modeSel2.value); updateUI2(act2); if (act2) alarm2In.value = act2;
+  });
+})();
+</script>
+
+
 </html>
