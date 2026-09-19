@@ -1923,77 +1923,205 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
-
-<!-- АВТОНОМНИЙ БЛОК ДЛЯ АЛЬТЕРНАТИВНОГО БУДИЛЬНИКА (ЧАСТИНА 2: ТАЙМЕР ТА КЕРУВАННЯ) -->
+<!-- АВТОНОМНИЙ БЛОК БУДИЛЬНИКА №2 (ЧАСТИНА 2-А: ІНТЕРФЕЙС ТА СТИЛІ) -->
 <script>
 (() => {
   window.addEventListener('DOMContentLoaded', () => {
-    const panel = document.getElementById('panel'), alarm2In = document.getElementById('alarm2-in');
-    const modeSel2 = document.getElementById('ext2-mode-sel'), pointRow2 = document.getElementById('ext2-point-row'), intRow2 = document.getElementById('ext2-int-row');
-    const valH2 = document.getElementById('ext2-h'), valM2 = document.getElementById('ext2-m'), btnOk2 = document.getElementById('ext2-ok');
+    const alarm2In = document.getElementById('alarm2-in'), btnOk2 = document.getElementById('ext2-ok');
+    const cp2 = document.getElementById('v-alarm2-c'), bg2 = document.getElementById('v-alarm2-bg-c'), scr2 = document.getElementById('v-alarm2-screen-c');
     if (!alarm2In || !btnOk2) return;
+
+    const styleRow = scr2.closest('.row');
+    if (styleRow && !document.getElementById('v-alarm2-fs')) {
+      const sizeWrapper = document.createElement('div');
+      sizeWrapper.innerHTML = '<div class="row"><span>Розмір тексту віджета 2:</span><input type="range" id="v-alarm2-fs" min="0.6" max="2.5" step="0.05" value="0.95"></div>' +
+                            '<div class="row"><span>Фон віджета 2:</span><input type="color" id="v-alarm2-widget-bg" value="#ffffff"><button type="button" id="v-alarm2-bg-clear" style="padding:2px 5px; font-size:0.75rem; cursor:pointer; margin-left:5px;">Прозорий</button></div>';
+      styleRow.after(sizeWrapper);
+    }
+
+    const fs2 = document.getElementById('v-alarm2-fs'), wBg2 = document.getElementById('v-alarm2-widget-bg'), wClear2 = document.getElementById('v-alarm2-bg-clear');
+
+    window.alarm2FirstStart = parseInt(localStorage.getItem('alarm2-abs-start')) || 0;
+    window.alarm2TriggeredMoment = parseInt(localStorage.getItem('alarm2-triggered-moment')) || 0;
+    window.alarm2StartTimeStr = localStorage.getItem('alarm2-start-moment') || '';
+
+    if (cp2 && bg2 && scr2) {
+      cp2.value = localStorage.getItem('v-alarm2-c-val') || '#0078d4'; bg2.value = localStorage.getItem('v-alarm2-bg-val') || '#2ecc71';
+      scr2.value = localStorage.getItem('v-alarm2-scr-val') || '#ff0000';
+      if (fs2) fs2.value = localStorage.getItem('v-alarm2-fs-val') || '0.95';
+      if (wBg2) wBg2.value = localStorage.getItem('v-alarm2-wbg-val') || '#ffffff';
+    }
+
+    window.applyLiveStyles2 = () => {
+      if (window.alarm2Btn.textContent === '--:--') return;
+      window.alarm2Btn.style.setProperty('color', cp2.value, 'important');
+      window.alarm2Btn.style.setProperty('font-size', fs2.value + 'rem', 'important');
+      const bgStyle = localStorage.getItem('v-alarm2-wbg-val') || '#ffffff';
+      window.alarm2Btn.style.setProperty('background-color', bgStyle === 'transparent' ? 'transparent' : bgStyle, 'important');
+    };
+
+    // ВИПРАВЛЕНО: Замінено textContent на innerHTML для правильного відображення скобок без сирих тегів
+    window.updateUI2 = (baseText, bracketsContent) => {
+      if (!baseText || baseText === '--:--') {
+        window.alarm2Btn.innerHTML = '--:--';
+        window.alarm2Btn.style.setProperty('color', 'transparent', 'important');
+        window.alarm2Btn.style.setProperty('background-color', 'transparent', 'important');
+        return;
+      }
+      window.alarm2Btn.innerHTML = '<span>' + baseText + '</span>' + (bracketsContent ? ' ' + bracketsContent : '');
+      window.alarm2Btn.style.setProperty('color', cp2.value, 'important');
+      window.alarm2Btn.style.setProperty('font-size', fs2.value + 'rem', 'important');
+      const savedBg = localStorage.getItem('v-alarm2-wbg-val') || '#ffffff';
+      window.alarm2Btn.style.setProperty('background-color', savedBg === 'transparent' ? 'transparent' : savedBg, 'important');
+    };
+
+    if (cp2 && fs2 && wBg2) {
+      cp2.addEventListener('input', () => { localStorage.setItem('v-alarm2-c-val', cp2.value); window.applyLiveStyles2(); });
+      fs2.addEventListener('input', () => { localStorage.setItem('v-alarm2-fs-val', fs2.value); window.applyLiveStyles2(); });
+      wBg2.addEventListener('input', () => { localStorage.setItem('v-alarm2-wbg-val', wBg2.value); window.applyLiveStyles2(); });
+      wClear2.addEventListener('click', () => { localStorage.setItem('v-alarm2-wbg-val', 'transparent'); window.applyLiveStyles2(); });
+      bg2.addEventListener('input', () => localStorage.setItem('v-alarm2-bg-val', bg2.value));
+      scr2.addEventListener('input', () => localStorage.setItem('v-alarm2-scr-val', scr2.value));
+    }
+
+    window.modal2 = document.createElement('div'); window.modal2.id = 'alarm2-modal';
+    window.modal2.style.cssText = 'position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:99999; font-family:sans-serif;';
+    window.modal2.innerHTML = '<div id="alarm2-card-bg" style="padding:40px; border-radius:12px; text-align:center; color:white; min-width:340px; box-shadow:0 10px 30px rgba(0,0,0,0.3);"><h2>БУДИЛЬНИК №2</h2><p id="alarm2-sub-txt" style="font-weight:bold; font-size:1.3rem; margin-bottom:10px;">Час настав!</p><div id="alarm2-pop-results" style="font-size:0.85rem; margin-bottom:15px; text-align:left; background:rgba(0,0,0,0.15); padding:10px; border-radius:6px; display:none; flex-direction:column; gap:4px;"></div><div style="margin-bottom:15px;"><div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">Відкласти дзвінок:</div><button class="sz2" data-m="5">5м</button><button class="sz2" data-m="10">10м</button><button class="sz2" data-m="20">20м</button><button class="sz2" data-m="30">30м</button><button class="sz2" data-m="60">60м</button></div><button id="alarm2-stop-btn" style="padding:12px; font-size:1.1rem; font-weight:bold; background:white; color:#323130; border:none; border-radius:8px; cursor:pointer; width:100%;">STOP</button></div><style>.sz2{padding:6px 10px; margin:3px; font-size:0.9rem; font-weight:bold; background:rgba(255,255,255,0.2); border:1px solid white; border-radius:6px; color:white; cursor:pointer; min-width:46px;}.sz2:hover{background:white; color:#2ecc71;}</style>';
+    document.body.appendChild(window.modal2);
+
+    window.clearAllAlarm2State = () => {
+      localStorage.removeItem('alarm2-v'); localStorage.removeItem('alarm2-snz'); localStorage.removeItem('alarm2-start-moment'); 
+      localStorage.removeItem('alarm2-triggered-moment'); localStorage.removeItem('alarm2-abs-start');
+      window.snooze2 = 0; window.alarm2TriggeredMoment = 0; window.alarm2FirstStart = 0; window.alarm2StartTimeStr = ''; window.act2 = ''; 
+      alarm2In.value = ''; window.updateUI2('', '');
+    };
+
+    window.close2 = () => { window.audio2.pause(); window.audio2.currentTime = 0; window.modal2.style.setProperty('display', 'none', 'important'); };
+    document.getElementById('alarm2-stop-btn').onclick = () => { window.clearAllAlarm2State(); window.close2(); };
+
+    window.modal2.querySelectorAll('.sz2').forEach(b => {
+      b.onclick = (e) => {
+        window.snooze2 = Date.now() + (parseInt(e.target.getAttribute('data-m')) || 5) * 60 * 1000;
+        localStorage.setItem('alarm2-snz', window.snooze2);
+        window.audio2.pause(); window.audio2.currentTime = 0; window.modal2.style.setProperty('display', 'none', 'important');
+        const d = new Date(window.snooze2); window.updateUI2(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'), '');
+      };
+    });
+  });
+})();
+</script>
+
+
+<!-- АВТОНОМНИЙ БЛОК БУДИЛЬНИКА №2 (ЧАСТИНА 2-Б: ВИПРАВЛЕНА ЛОГІКА ІНТЕРВАЛУ ТА ТОЧКИ ЧАСУ) -->
+<script>
+(() => {
+  window.addEventListener('DOMContentLoaded', () => {
+    const alarm2In = document.getElementById('alarm2-in'), btnOk2 = document.getElementById('ext2-ok');
+    const modeSel2 = document.getElementById('ext2-mode-sel');
+    const pointRow2 = document.getElementById('ext2-point-row'), intRow2 = document.getElementById('ext2-int-row');
+    const valH2 = document.getElementById('ext2-h'), valM2 = document.getElementById('ext2-m'), cp2 = document.getElementById('v-alarm2-c'), fs2 = document.getElementById('v-alarm2-fs');
+    if (!alarm2In || !btnOk2 || !pointRow2 || !intRow2) return;
 
     const toggleView2 = (m) => {
       pointRow2.style.setProperty('display', m === 'interval' ? 'none' : 'flex', 'important');
       intRow2.style.setProperty('display', m === 'interval' ? 'flex' : 'none', 'important');
     };
     modeSel2.onchange = (e) => toggleView2(e.target.value);
+    toggleView2(modeSel2.value);
 
-    const cp2 = document.getElementById('v-alarm2-c'), bg2 = document.getElementById('v-alarm2-bg-c'), scr2 = document.getElementById('v-alarm2-screen-c');
-    if (cp2 && bg2 && scr2) {
-      cp2.value = localStorage.getItem('v-alarm2-c-val') || '#0078d4'; bg2.value = localStorage.getItem('v-alarm2-bg-val') || '#2ecc71'; scr2.value = localStorage.getItem('v-alarm2-scr-val') || '#ff0000';
-      cp2.addEventListener('input', (e) => { localStorage.setItem('v-alarm2-c-val', e.target.value); if (window.alarm2Btn.textContent !== '--:--') window.alarm2Btn.style.setProperty('color', e.target.value, 'important'); });
-      bg2.addEventListener('input', (e) => localStorage.setItem('v-alarm2-bg-val', e.target.value));
-      scr2.addEventListener('input', (e) => localStorage.setItem('v-alarm2-scr-val', e.target.value));
-    }
+    const initStartTimes = () => {
+      window.alarm2FirstStart = Date.now(); localStorage.setItem('alarm2-abs-start', window.alarm2FirstStart);
+      const now = new Date(); window.alarm2StartTimeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0');
+      localStorage.setItem('alarm2-start-moment', window.alarm2StartTimeStr);
+    };
 
-    const updateUI2 = (v) => { window.alarm2Btn.textContent = v || '--:--'; window.alarm2Btn.style.setProperty('color', v ? (localStorage.getItem('v-alarm2-c-val') || '#0078d4') : 'transparent', 'important'); };
-
-    const modal2 = document.createElement('div'); modal2.id = 'alarm2-modal';
-    modal2.style.cssText = 'position:fixed; inset:0; display:none; align-items:center; justify-content:center; z-index:99999; background:#ff0000 !important; font-family:sans-serif;';
-    modal2.innerHTML = '<div id="alarm2-card-bg" style="background:#2ecc71; padding:40px; border-radius:12px; text-align:center; color:white; min-width:340px; box-shadow:0 10px 30px rgba(0,0,0,0.3);"><h2>БУДИЛЬНИК №2</h2><p id="alarm2-sub-txt" style="font-weight:bold; font-size:1.3rem; margin-bottom:15px;">Час настав!</p><div style="margin-bottom:15px;"><div style="font-size:0.9rem; font-weight:bold; margin-bottom:6px;">Відкласти дзвінок:</div><button class="sz2" data-m="5">5м</button><button class="sz2" data-m="10">10м</button><button class="sz2" data-m="20">20м</button><button class="sz2" data-m="30">30м</button><button class="sz2" data-m="60">60м</button></div><button id="alarm2-stop-btn" style="padding:12px; font-size:1.1rem; font-weight:bold; background:white; color:#323130; border:none; border-radius:8px; cursor:pointer; width:100%;">STOP</button></div><style>.sz2{padding:6px 10px; margin:3px; font-size:0.9rem; font-weight:bold; background:rgba(255,255,255,0.2); border:1px solid white; border-radius:6px; color:white; cursor:pointer; min-width:46px;}</style>';
-    document.body.appendChild(modal2);
-
-    const close2 = () => { window.audio2.pause(); window.audio2.currentTime = 0; modal2.style.setProperty('display', 'none', 'important'); };
-    document.getElementById('alarm2-stop-btn').onclick = () => { window.snooze2 = 0; localStorage.removeItem('alarm2-snz'); close2(); };
-
-    modal2.querySelectorAll('.sz2').forEach(b => {
-      b.onclick = (e) => {
-        window.snooze2 = Date.now() + (parseInt(e.target.getAttribute('data-m')) || 5) * 60 * 1000;
-        localStorage.setItem('alarm2-snz', window.snooze2);
-        const d = new Date(window.snooze2); updateUI2(String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0')); close2();
-      };
-    });
+    const clearOnlyTimers2 = () => {
+      localStorage.removeItem('alarm2-snz'); localStorage.removeItem('alarm2-triggered-moment');
+      window.snooze2 = 0; window.alarm2TriggeredMoment = 0; window.alarm2FirstStart = 0;
+    };
 
     btnOk2.onclick = () => {
-      let s = alarm2In.value;
+      let s = '';
       if (modeSel2.value === 'interval') {
         const d = new Date(); d.setHours(d.getHours() + (parseInt(valH2.value) || 0)); d.setMinutes(d.getMinutes() + (parseInt(valM2.value) || 0));
         s = String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        alarm2In.value = s;
+      } else {
+        s = alarm2In.value;
       }
-      if (s) { window.snooze2 = 0; localStorage.removeItem('alarm2-snz'); window.act2 = s; localStorage.setItem('alarm2-v', s); alarm2In.value = s; updateUI2(s); panel.classList.remove('open'); }
+      
+      if (s) { 
+        clearOnlyTimers2(); initStartTimes();
+        window.act2 = s; localStorage.setItem('alarm2-v', s); window.updateUI2(s, ''); document.getElementById('panel').classList.remove('open');
+      }
     };
 
-    alarm2In.onchange = () => { if (modeSel2.value === 'point') { window.snooze2 = 0; localStorage.removeItem('alarm2-snz'); window.act2 = alarm2In.value; localStorage.setItem('alarm2-v', alarm2In.value); updateUI2(alarm2In.value); } };
+    alarm2In.onchange = () => { 
+      if (modeSel2.value === 'point' && alarm2In.value) { 
+        clearOnlyTimers2(); initStartTimes();
+        window.act2 = alarm2In.value; localStorage.setItem('alarm2-v', alarm2In.value); window.updateUI2(alarm2In.value, ''); 
+      } 
+    };
 
-    // ВИПРАВЛЕНО: Кнопка скидання основного будильника тепер ніяк не шкодить і не чіпає файли Будильника 2!
     const oldReset = document.querySelector('button[onclick*="removeItem(\'alarm-in\')"]');
-    if (oldReset) {
-      oldReset.addEventListener('click', () => {
-        // Ми очищуємо лише виставлений час Будильника 2 на екрані, а МЕЛОДІЯ і НАЗВА залишаються недоторканними
-        localStorage.removeItem('alarm2-v'); localStorage.removeItem('alarm2-snz'); 
-        window.snooze2 = 0; window.act2 = ''; alarm2In.value = ''; updateUI2('');
-      });
-    }
+    if (oldReset) oldReset.addEventListener('click', window.clearAllAlarm2State);
 
-    // 5. Секундний Еко-Таймер перевірки (0% ЦП)
     let lastM2 = -1;
     setInterval(() => {
-      const t = new Date();
-      if (t.getSeconds() === 0 && t.getMinutes() !== lastM2) {
-        lastM2 = t.getMinutes();
-        let cur = String(t.getHours()).padStart(2, '0') + ':' + String(t.getMinutes()).padStart(2, '0');
-        if ((window.snooze2 > 0 && Date.now() >= window.snooze2) || (window.snooze2 === 0 && window.act2 === cur)) {
+      const t = new Date(); let curH = t.getHours(), curM = t.getMinutes(), curS = t.getSeconds();
+      let nowTimeStr = String(curH).padStart(2, '0') + ':' + String(curM).padStart(2, '0');
+
+      let targetActiveTime = window.snooze2 > 0 ? new Date(window.snooze2) : null;
+      if (!targetActiveTime && window.act2) {
+        const [th, tm] = window.act2.split(':').map(Number);
+        targetActiveTime = new Date(t); targetActiveTime.setHours(th, tm, 0, 0);
+        if (targetActiveTime <= t && window.alarm2TriggeredMoment === 0) targetActiveTime.setDate(targetActiveTime.getDate() + 1);
+      }
+
+      if (targetActiveTime || window.alarm2TriggeredMoment > 0) {
+        let totalElapsedSec = window.alarm2FirstStart > 0 ? Math.floor((Date.now() - window.alarm2FirstStart) / 1000) : 0;
+        let totMin = Math.floor(totalElapsedSec / 60), totSec = totalElapsedSec % 60;
+        let tStr = String(totMin).padStart(2,'0') + ':' + String(totSec).padStart(2,'0');
+
+        let bracketsStr = ''; let remTimeText = '00:00';
+
+        if (targetActiveTime) {
+          let diffMs = targetActiveTime.getTime() - t.getTime();
+          if (diffMs > 0) {
+            let diffSec = Math.floor(diffMs / 1000), remM = Math.floor(diffSec / 60), remS = diffSec % 60;
+            remTimeText = String(remM).padStart(2,'0') + ':' + String(remS).padStart(2,'0');
+          }
+        }
+
+        let displayEndVal = window.snooze2 > 0 ? String(targetActiveTime.getHours()).padStart(2, '0') + ':' + String(targetActiveTime.getMinutes()).padStart(2, '0') : window.act2;
+
+        if (window.alarm2TriggeredMoment > 0) {
+          bracketsStr = '<span style="font-weight:bold; margin-left:4px;">(' + nowTimeStr + ' | 00:00 | ' + tStr + ' | ' + window.alarm2StartTimeStr + ')</span>';
+          const resBox = document.getElementById('alarm2-pop-results');
+          if (resBox) { 
+            resBox.style.setProperty('display', 'flex', 'important'); 
+            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + nowTimeStr + '</div><div>• 2) Залишок часу: 00:00</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>'; 
+          }
+        } else {
+          bracketsStr = '<span style="font-weight:bold; margin-left:4px;">(' + remTimeText + ' | ' + tStr + ' | ' + window.alarm2StartTimeStr + ')</span>';
+          const resBox = document.getElementById('alarm2-pop-results'); 
+          if (resBox) {
+            resBox.style.setProperty('display', 'flex', 'important');
+            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + displayEndVal + '</div><div>• 2) Залишок часу: ' + remTimeText + '</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>';
+          }
+        }
+        window.updateUI2(displayEndVal, bracketsStr);
+      } else { window.updateUI2('', ''); }
+
+      if (curS === 0 && curM !== lastM2) {
+        lastM2 = curM; let ring = false;
+        if (window.snooze2 > 0 && Date.now() >= window.snooze2) ring = true;
+        else if (window.snooze2 === 0 && window.act2 === nowTimeStr) ring = true;
+
+        if (ring) {
+          if (window.alarm2TriggeredMoment === 0) { window.alarm2TriggeredMoment = Date.now(); localStorage.setItem('alarm2-triggered-moment', window.alarm2TriggeredMoment); }
+          window.alarm2TriggeredMoment = 0; localStorage.removeItem('alarm2-triggered-moment');
+          localStorage.removeItem('alarm2-v'); window.act2 = ''; alarm2In.value = '';
           if (window.db2) {
             window.db2.transaction('mp3_store2').objectStore('mp3_store2').get('track2').onsuccess = ev => {
               window.audio2.src = ev.target.result ? URL.createObjectURL(ev.target.result) : "https://huggingface.co";
@@ -2001,17 +2129,16 @@ window.addEventListener('DOMContentLoaded', () => {
             };
           }
           document.getElementById('alarm2-modal').style.setProperty('background', localStorage.getItem('v-alarm2-scr-val') || '#ff0000', 'important');
-          document.getElementById('alarm2-card-bg').style.setProperty('background', localStorage.getItem('v-alarm2-bg-val') || '#2ecc71', 'important');
-          document.getElementById('alarm2-sub-txt').textContent = "Зараз " + cur; modal2.style.setProperty('display', 'flex', 'important');
-          localStorage.removeItem('alarm2-v'); localStorage.removeItem('alarm2-snz'); window.snooze2 = 0; window.act2 = ''; alarm2In.value = ''; updateUI2('');
+          document.getElementById('alarm2-card-bg').style.setProperty('background', localStorage.getItem('v-alarm2-card-bg-val') || '#2ecc71', 'important');
+          document.getElementById('alarm2-sub-txt').textContent = "Зараз " + nowTimeStr; window.modal2.style.setProperty('display', 'flex', 'important');
         }
       }
     }, 1000);
-
-    toggleView2(modeSel2.value); updateUI2(window.act2); if (window.act2) alarm2In.value = window.act2;
   });
 })();
 </script>
+
+
 
 <!-- АВТОНОМНИЙ БЛОК: БАГАТОРАЗОВЕ ОЧИЩЕННЯ МИНУЛОГО РОКУ НОТАТОК -->
 <script>
