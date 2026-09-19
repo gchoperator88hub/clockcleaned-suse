@@ -2012,7 +2012,7 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 
 
-<!-- АВТОНОМНИЙ БЛОК БУДИЛЬНИКА №2 (ЧАСТИНА 2-Б: ВИПРАВЛЕНА ЛОГІКА ІНТЕРВАЛУ ТА ТОЧКИ ЧАСУ) -->
+<!-- АВТОНОМНИЙ БЛОК БУДИЛЬНИКА №2 (ЧАСТИНА 2-Б: ПОВНИЙ ФОРМАТ ЧАСУ HH:MM:SS) -->
 <script>
 (() => {
   window.addEventListener('DOMContentLoaded', () => {
@@ -2049,7 +2049,6 @@ window.addEventListener('DOMContentLoaded', () => {
       } else {
         s = alarm2In.value;
       }
-      
       if (s) { 
         clearOnlyTimers2(); initStartTimes();
         window.act2 = s; localStorage.setItem('alarm2-v', s); window.updateUI2(s, ''); document.getElementById('panel').classList.remove('open');
@@ -2066,6 +2065,15 @@ window.addEventListener('DOMContentLoaded', () => {
     const oldReset = document.querySelector('button[onclick*="removeItem(\'alarm-in\')"]');
     if (oldReset) oldReset.addEventListener('click', window.clearAllAlarm2State);
 
+    // Функція переведення секунд у формат HH:MM:SS
+    const formatToHMS = (totalSeconds) => {
+      if (totalSeconds < 0) totalSeconds = 0;
+      let h = Math.floor(totalSeconds / 3600);
+      let m = Math.floor((totalSeconds % 3600) / 60);
+      let s = totalSeconds % 60;
+      return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    };
+
     let lastM2 = -1;
     setInterval(() => {
       const t = new Date(); let curH = t.getHours(), curM = t.getMinutes(), curS = t.getSeconds();
@@ -2079,38 +2087,45 @@ window.addEventListener('DOMContentLoaded', () => {
       }
 
       if (targetActiveTime || window.alarm2TriggeredMoment > 0) {
+        // 3) ВИПРАВЛЕНО: Час від старту тепер суворо у форматі HH:MM:SS
         let totalElapsedSec = window.alarm2FirstStart > 0 ? Math.floor((Date.now() - window.alarm2FirstStart) / 1000) : 0;
-        let totMin = Math.floor(totalElapsedSec / 60), totSec = totalElapsedSec % 60;
-        let tStr = String(totMin).padStart(2,'0') + ':' + String(totSec).padStart(2,'0');
+        let tStr = formatToHMS(totalElapsedSec);
 
-        let bracketsStr = ''; let remTimeText = '00:00';
+        // Час чистого звучання
+        let ringElapsedSec = window.alarm2TriggeredMoment > 0 ? Math.floor((Date.now() - window.alarm2TriggeredMoment) / 1000) : 0;
+        let rStr = formatToHMS(ringElapsedSec);
+
+        let bracketsStr = ''; let remTimeText = '00:00:00';
 
         if (targetActiveTime) {
           let diffMs = targetActiveTime.getTime() - t.getTime();
           if (diffMs > 0) {
-            let diffSec = Math.floor(diffMs / 1000), remM = Math.floor(diffSec / 60), remS = diffSec % 60;
-            remTimeText = String(remM).padStart(2,'0') + ':' + String(remS).padStart(2,'0');
+            // 2) ВИПРАВЛЕНО: Залишок часу до кінця тепер суворо у форматі HH:MM:SS
+            let diffSec = Math.floor(diffMs / 1000);
+            remTimeText = formatToHMS(diffSec);
           }
         }
 
         let displayEndVal = window.snooze2 > 0 ? String(targetActiveTime.getHours()).padStart(2, '0') + ':' + String(targetActiveTime.getMinutes()).padStart(2, '0') : window.act2;
+        // Додаємо секунди до базового часу для відповідності загальному формату
+        let displayEndValFull = displayEndVal + ':00';
 
         if (window.alarm2TriggeredMoment > 0) {
-          bracketsStr = '<span style="font-weight:bold; margin-left:4px;">(' + nowTimeStr + ' | 00:00 | ' + tStr + ' | ' + window.alarm2StartTimeStr + ')</span>';
+          bracketsStr = '<span style="font-weight:bold; margin-left:4px;">(' + nowTimeStr + ':00 | 00:00:00 | ' + tStr + ' | ' + window.alarm2StartTimeStr + ')</span>';
           const resBox = document.getElementById('alarm2-pop-results');
           if (resBox) { 
             resBox.style.setProperty('display', 'flex', 'important'); 
-            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + nowTimeStr + '</div><div>• 2) Залишок часу: 00:00</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>'; 
+            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + nowTimeStr + ':00</div><div>• 2) Залишок часу: 00:00:00</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>'; 
           }
         } else {
           bracketsStr = '<span style="font-weight:bold; margin-left:4px;">(' + remTimeText + ' | ' + tStr + ' | ' + window.alarm2StartTimeStr + ')</span>';
           const resBox = document.getElementById('alarm2-pop-results'); 
           if (resBox) {
             resBox.style.setProperty('display', 'flex', 'important');
-            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + displayEndVal + '</div><div>• 2) Залишок часу: ' + remTimeText + '</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>';
+            resBox.innerHTML = '<div>• 1) Час дзвінка: ' + displayEndValFull + '</div><div>• 2) Залишок часу: ' + remTimeText + '</div><div>• 3) Пройшло від старту: ' + tStr + '</div><div>• 4) Час старту: ' + window.alarm2StartTimeStr + '</div>';
           }
         }
-        window.updateUI2(displayEndVal, bracketsStr);
+        window.updateUI2(displayEndValFull, bracketsStr);
       } else { window.updateUI2('', ''); }
 
       if (curS === 0 && curM !== lastM2) {
