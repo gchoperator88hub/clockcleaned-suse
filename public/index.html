@@ -255,6 +255,34 @@
  Товщина місяців
  <input type="range" id="v-months-h" min="25" max="80" value="35" />
 </div>
+        <div class="row">
+ Колір року <input type="color" id="v-year-txt-c" value="#ff0000" />
+ </div>
+ <div class="row">
+ Фон року <input type="color" id="v-year-bg-c" value="#ffffff" />
+ </div>
+ <script>
+ (() => {
+ const txtInput = document.getElementById('v-year-txt-c');
+ const bgInput = document.getElementById('v-year-bg-c');
+ const apply = (id, cssVar, fallback) => {
+ const saved = localStorage.getItem(id) || fallback;
+ const el = document.getElementById(id);
+ if (el) el.value = saved;
+ document.documentElement.style.setProperty(cssVar, saved);
+ };
+ apply('v-year-txt-c', '--year-txt-c', '#ff0000');
+ apply('v-year-bg-c', '--year-bg-c', '#ffffff');
+ if (txtInput) txtInput.addEventListener('input', (e) => {
+ localStorage.setItem('v-year-txt-c', e.target.value);
+ document.documentElement.style.setProperty('--year-txt-c', e.target.value);
+ });
+ if (bgInput) bgInput.addEventListener('input', (e) => {
+ localStorage.setItem('v-year-bg-c', e.target.value);
+ document.documentElement.style.setProperty('--year-bg-c', e.target.value);
+ });
+ })();
+ </script>
 
         <div class="row">
           Колір часу <input type="color" id="v-time-c" value="#888888" />
@@ -807,14 +835,21 @@ function getCleanDateKeyForCell(cell) {
  
  // ЯКЩО Є ЗЛАМ ДАТ (тиждень розбитий на два місяці):
  if (splitIndex !== -1) {
+ const todayIdx = (new Date().getDay() + 6) % 7; // 0 = Пн ... 6 = Нд
+ if (todayIdx < splitIndex) {
+ // Сьогодні ДО зламу: дні до зламу = поточний місяць, дні після зламу = наступний
+ if (currentDayIndex >= splitIndex) {
+ const nextDate = new Date(currentYear, currentMonth + 1, 1);
+ currentYear = nextDate.getFullYear();
+ currentMonth = nextDate.getMonth();
+ }
+ } else {
+ // Сьогодні ПІСЛЯ зламу: дні після зламу = поточний місяць, дні до зламу = попередній
  if (currentDayIndex < splitIndex) {
- // Дні ДО зламу (наприклад, 29 та 30 число) — це попередній місяць
  const prevDate = new Date(currentYear, currentMonth - 1, 1);
  currentYear = prevDate.getFullYear();
  currentMonth = prevDate.getMonth();
- } else {
- // Дні ПІСЛЯ зламу (наприклад, 1, 2, 3 число) — це основний або наступний місяць
- // Залишаємо базовий currentMonth
+ }
  }
  } else {
  // ЯКЩО ЗЛАМУ НЕМАЄ (всі 7 днів належать одному місяцю):
@@ -836,15 +871,26 @@ function getCleanDateKeyForCell(cell) {
 
 /// 2. Безперервне автоматичне підсвічування комірок днів тижня (жовтий колір) з єдиної бази
 setInterval(() => {
-  const notes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
-  document.querySelectorAll('.grid-hdr .hdr-cell').forEach(cell => {
-    const dateKey = getCleanDateKeyForCell(cell);
-    if (dateKey && notes[dateKey] && notes[dateKey].trim() !== '') {
-      cell.classList.add('has-note');
-    } else {
-      cell.classList.remove('has-note');
-    }
-  });
+ const notes = JSON.parse(localStorage.getItem("calendar_notes") || "{}");
+ const todayColorVal = localStorage.getItem('v-td-bg') || document.getElementById('v-today-c')?.value || '#6264a7';
+ document.querySelectorAll('.grid-hdr .hdr-cell').forEach(cell => {
+ const dateKey = getCleanDateKeyForCell(cell);
+ const hasNote = dateKey && notes[dateKey] && notes[dateKey].trim() !== '';
+ if (hasNote) {
+ cell.classList.add('has-note');
+ } else {
+ cell.classList.remove('has-note');
+ }
+ if (cell.classList.contains('today')) {
+ if (hasNote) {
+ cell.style.setProperty('background', '#ffff00', 'important');
+ cell.style.setProperty('background-color', '#ffff00', 'important');
+ } else {
+ cell.style.setProperty('background', todayColorVal, 'important');
+ cell.style.setProperty('background-color', todayColorVal, 'important');
+ }
+ }
+ });
 }, 10000);
 
 // 3. Обробник кліку по кнопках тижня: завантажує старі нотатки з єдиної бази за 3 роки
@@ -1592,7 +1638,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const db = e.target.result;
     
     db.transaction('mp3_store').objectStore('mp3_store').get('track').onsuccess = ev => {
-      if (ev.target.result) document.getElementById('db-msg').textContent = "🎵 MP3 файл збережено в браузері";
+      if (ev.target.result) document.getElementById('db-msg').textContent = localStorage.getItem('alarm1-filename') || " 🎵 MP3 файл збережено";
     };
 
     document.getElementById('db-btn').onclick = (ev) => { ev.preventDefault(); document.getElementById('db-file').click(); };
@@ -1602,7 +1648,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!file) return;
   const tx = db.transaction('mp3_store', 'readwrite');
   tx.objectStore('mp3_store').put(file, 'track'); // Автоматично затирає старий файл у базі
-  tx.oncomplete = () => { document.getElementById('db-msg').textContent = " ✅ Збережено: " + file.name; };
+  tx.oncomplete = () => { const n = " ✅ " + file.name; document.getElementById('db-msg').textContent = n; localStorage.setItem('alarm1-filename', n); };
 };
 
     // ПОВНЕ ВИМКНЕННЯ ФОНОВИХ ПЕРЕВІРОК ТА ЗВУКУ БЕЗ БУДИЛЬНИКА
@@ -1903,14 +1949,14 @@ window.addEventListener('DOMContentLoaded', () => {
     mHtml += '<div class="row"><span>Текст віджета 2:</span><input type="color" id="v-alarm2-c" value="#0078d4"></div>';
     mHtml += '<div class="row"><span>Картка поп-апу 2:</span><input type="color" id="v-alarm2-bg-c" value="#2ecc71"></div>';
     mHtml += '<div class="row"><span>Великий фон вікна 2:</span><input type="color" id="v-alarm2-screen-c" value="#ff0000"></div></div>';
-    mHtml += '<div style="margin:12px 0; border-top:1px dashed #ccc; padding-top:10px;"><input type="file" id="db2-file" accept=".mp3" style="display:none;" /><button id="db2-btn" type="button" style="width:100%; padding:8px; background:#2ecc71; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:0.85rem;">ЗАВАНТАЖИТИ MP3 ДЛЯ БУДИЛЬНИКА 2</button><div id="db2-msg" style="font-size:11px; text-align:center; margin-top:4px; color:#2ecc71; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">Очікування...</div></div>';
+    mHtml += '<div style="margin:12px 0; border-top:1px dashed #ccc; padding-top:10px;"><input type="file" id="db2-file" accept=".mp3" style="display:none;" /><button id="db2-btn" type="button" style="width:100%; padding:8px; background:#2ecc71; color:#fff; border:none; font-weight:bold; border-radius:4px; cursor:pointer; font-size:0.85rem;">ЗАВАНТАЖИТИ MP3 ДЛЯ БУДИЛЬНИКА 2</button><div id="db2-msg" style="font-size:11px; text-align:center; margin-top:4px; color:#2ecc71; font-weight:bold; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:100%;">' + (localStorage.getItem('alarm2-filename') || 'Очікування...') + '</div></div>';
     mHtml += '<button type="button" id="ext2-ok" style="padding:10px; background:#0078d4; color:white; border:none; font-weight:bold; font-size:1rem; border-radius:6px; width:100%; cursor:pointer; text-transform:uppercase;">ЗАФІКСУВАТИ БУДИЛЬНИК 2</button>';
     
     wrapper2.innerHTML = mHtml; document.getElementById('alarm-interval-eco-ext')?.after(wrapper2);
 
     document.getElementById('db2-btn').onclick = () => document.getElementById('db2-file').click();
     document.getElementById('db2-file').onchange = ev => {
-      const f = ev.target.files[0]; if (!f || !window.db2) return;
+      const f = ev.target.files[0]; if (!f || !window.db2) return; localStorage.setItem('alarm2-filename', " ✅ " + f.name);
       const tx = window.db2.transaction('mp3_store2', 'readwrite');
       // put(f) гарантує 100% видалення старої пісні та запис нової
       tx.objectStore('mp3_store2').put(f, 'track2').oncomplete = () => { 
@@ -2144,11 +2190,12 @@ window.addEventListener('DOMContentLoaded', () => {
             };
           }
           document.getElementById('alarm2-modal').style.setProperty('background', localStorage.getItem('v-alarm2-scr-val') || '#ff0000', 'important');
-          document.getElementById('alarm2-card-bg').style.setProperty('background', localStorage.getItem('v-alarm2-card-bg-val') || '#2ecc71', 'important');
+          document.getElementById('alarm2-card-bg').style.setProperty('background', localStorage.getItem('v-alarm2-bg-val') || '#2ecc71', 'important');
           document.getElementById('alarm2-sub-txt').textContent = "Зараз " + nowTimeStr; window.modal2.style.setProperty('display', 'flex', 'important');
         }
       }
     }, 1000);
+    setTimeout(() => { const s2 = localStorage.getItem('alarm2-filename'); if(s2 && document.getElementById('db2-msg')) document.getElementById('db2-msg').textContent = s2; }, 150);
   });
 })();
 </script>
@@ -2166,7 +2213,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
     const div = document.createElement('div');
     div.style.cssText = 'border-top: 2px solid #e74c3c; padding-top:10px; margin-top:20px; font-family:sans-serif;';
-    div.innerHTML = '<h5 style="margin:0 0 8px 0; color:#e74c3c; font-weight:bold;">Очищення сміття 🧹</h5><button type="button" id="clear-prev-year-btn" style="width:100%; padding:8px; background:#e74c3c; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">Видалити нотатки за ' + prevYear + ' рік</button>';
+    div.innerHTML = '<h5 style="margin:0 0 8px 0; color:#e74c3c; font-weight:bold;">dead JSDP U putinozelenskoyepatrushevo to rubbish 🧹</h5><button type="button" id="clear-prev-year-btn" style="width:100%; padding:8px; background:#e74c3c; color:white; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.8rem; text-transform:uppercase;">Видалити нотатки за ' + prevYear + ' рік</button>';
     
     const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
     if (saveBtn) saveBtn.before(div); else panel.appendChild(div);
@@ -2196,6 +2243,321 @@ window.addEventListener('DOMContentLoaded', () => {
       alert("Видалено записів за " + prevYear + " рік: " + count);
       location.reload();
     };
+  });
+})();
+</script>
+
+<!-- ===== ДОДАТКОВІ НЕЗАЛЕЖНІ БУДИЛЬНИКИ (ПОВНИЙ КЛОН БУДИЛЬНИКА №2) ===== -->
+<script>
+(() => {
+  function createAlarmClone(idx) {
+    const firstBtn = document.getElementById('alarm-time-btn');
+    const panel = document.getElementById('panel');
+    if (!firstBtn || !panel) return;
+
+    window[`db${idx}`] = null;
+    window[`audio${idx}`] = new Audio(); window[`audio${idx}`].loop = true;
+    window[`snooze${idx}`] = parseInt(localStorage.getItem(`alarm${idx}-snz`)) || 0;
+    window[`act${idx}`] = localStorage.getItem(`alarm${idx}-v`) || '';
+    window[`alarm${idx}FirstStart`] = parseInt(localStorage.getItem(`alarm${idx}-abs-start`)) || 0;
+    window[`alarm${idx}TriggeredMoment`] = parseInt(localStorage.getItem(`alarm${idx}-triggered-moment`)) || 0;
+    window[`alarm${idx}StartTimeStr`] = localStorage.getItem(`alarm${idx}-start-moment`) || '';
+
+    const dbReq = indexedDB.open(`Alarm${idx}FileDB`, 1);
+    dbReq.onupgradeneeded = e => e.target.result.createObjectStore(`mp3_store${idx}`);
+    dbReq.onsuccess = e => {
+      window[`db${idx}`] = e.target.result;
+      const tx = window[`db${idx}`].transaction(`mp3_store${idx}`).objectStore(`mp3_store${idx}`).get(`track${idx}`);
+      tx.onsuccess = ev => {
+        if (ev.target.result) {
+          document.getElementById(`db${idx}-msg`).textContent = localStorage.getItem(`alarm${idx}-filename`) || ' MP3 файл збережено';
+          document.getElementById(`db${idx}-msg`).style.color = '#2ecc71';
+        }
+      };
+    };
+
+    // Кнопка під годинником
+    const btn = document.createElement('button');
+    btn.type = 'button'; btn.id = `alarm${idx}-time-btn`;
+    btn.style.cssText = 'display:block;margin-top:6px;background:transparent!important;border:none;cursor:pointer;width:100%;text-align:center;font-weight:800;font-size:var(--alarm-txt-fs,0.95rem);';
+    btn.textContent = '--:--';
+    let anchor = firstBtn;
+    for (let i = 2; i < idx; i++) { const prev = document.getElementById(`alarm${i}-time-btn`); if (prev) anchor = prev; }
+    anchor.after(btn);
+    window[`alarm${idx}Btn`] = btn;
+    btn.onclick = () => panel.classList.add('open');
+
+    // Блок налаштувань у панелі
+    const wrapper = document.createElement('div');
+    wrapper.id = `alarm${idx}-control-container`;
+    wrapper.style.cssText = 'border-top:2px solid #0078d4;padding-top:15px;margin-top:20px;font-family:sans-serif;box-sizing:border-box;width:100%;';
+    let mHtml = `<h5 style="margin:0 0 12px 0;color:#0078d4;font-weight:bold;font-size:1.1rem;">Будильник №${idx}</h5>`;
+    mHtml += `<div class="row" style="margin-bottom:12px;"><span style="font-weight:600;">Режим ${idx}:</span><select id="ext${idx}-mode-sel" style="padding:6px;font-weight:bold;font-size:1rem;border-radius:4px;width:150px;"><option value="point">Точка часу</option><option value="interval">Інтервал</option></select></div>`;
+    mHtml += `<div id="ext${idx}-point-row" class="row" style="margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;"><span>Час дзвінка ${idx}:</span><input type="time" id="alarm${idx}-in" style="padding:10px 14px;font-weight:bold;font-size:1.2rem;border-radius:6px;border:1px solid #edebe9;width:150px;text-align:center;background:#fff;color:#000;"></div>`;
+    mHtml += `<div id="ext${idx}-int-row" style="display:none;justify-content:space-between;align-items:center;margin-bottom:12px;"><span style="font-weight:600;">Через:</span><div style="display:inline-flex;align-items:center;gap:6px;"><input type="number" id="ext${idx}-h" value="0" style="width:60px;padding:8px;font-size:1.2rem;font-weight:bold;border-radius:6px;text-align:center;border:1px solid #edebe9;background:#fff;color:#000;"> г <input type="number" id="ext${idx}-m" value="10" style="width:60px;padding:8px;font-size:1.2rem;font-weight:bold;border-radius:6px;text-align:center;border:1px solid #edebe9;background:#fff;color:#000;"> хв</div></div>`;
+    mHtml += `<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;border-top:1px dashed #ccc;padding-top:10px;">`;
+    mHtml += `<div class="row"><span>Текст віджета ${idx}:</span><input type="color" id="v-alarm${idx}-c" value="#0078d4"></div>`;
+    mHtml += `<div class="row"><span>Картка поп-апу ${idx}:</span><input type="color" id="v-alarm${idx}-bg-c" value="#2ecc71"></div>`;
+    mHtml += `<div class="row"><span>Великий фон вікна ${idx}:</span><input type="color" id="v-alarm${idx}-screen-c" value="#ff0000"></div>`;
+    mHtml += `<div class="row"><span>Розмір тексту віджета ${idx}:</span><input type="range" id="v-alarm${idx}-fs" min="0.6" max="2.5" step="0.05" value="0.95"></div>`;
+    mHtml += `<div class="row"><span>Фон віджета ${idx}:</span><input type="color" id="v-alarm${idx}-widget-bg" value="#ffffff"><button type="button" id="v-alarm${idx}-bg-clear" style="padding:2px 5px;font-size:0.75rem;cursor:pointer;margin-left:5px;">Прозорий</button></div>`;
+    mHtml += `</div>`;
+    mHtml += `<div style="margin:12px 0;border-top:1px dashed #ccc;padding-top:10px;"><input type="file" id="db${idx}-file" accept=".mp3" style="display:none;" /><button id="db${idx}-btn" type="button" style="width:100%;padding:8px;background:#2ecc71;color:#fff;border:none;font-weight:bold;border-radius:4px;cursor:pointer;font-size:0.85rem;">ЗАВАНТАЖИТИ MP3 ДЛЯ БУДИЛЬНИКА ${idx}</button><div id="db${idx}-msg" style="font-size:11px;text-align:center;margin-top:4px;color:#555;">Очікування...</div></div>`;
+    mHtml += `<div class="row" style="gap:4px;flex-wrap:wrap;">`;
+    [5,10,20,30,60].forEach(m => { mHtml += `<button type="button" class="sn${idx}" data-m="${m}" style="padding:4px 8px;border-radius:4px;border:1px solid #ccc;cursor:pointer;">${m}м</button>`; });
+    mHtml += `</div>`;
+    mHtml += `<button type="button" id="ext${idx}-ok" style="padding:10px;background:#0078d4;color:white;border:none;font-weight:bold;font-size:1rem;border-radius:6px;width:100%;cursor:pointer;text-transform:uppercase;margin-top:10px;">ЗАФІКСУВАТИ БУДИЛЬНИК ${idx}</button>`;
+    wrapper.innerHTML = mHtml;
+
+    let panelAnchor = document.getElementById('alarm-interval-eco-ext') || panel;
+    for (let i = 2; i < idx; i++) { const prevW = document.getElementById(`alarm${i}-control-container`); if (prevW) panelAnchor = prevW; }
+    panelAnchor.after(wrapper);
+
+    // Прив'язка елементів
+    const alarmIn = document.getElementById(`alarm${idx}-in`);
+    const modeSel = document.getElementById(`ext${idx}-mode-sel`);
+    const pointRow = document.getElementById(`ext${idx}-point-row`);
+    const intRow = document.getElementById(`ext${idx}-int-row`);
+    const valH = document.getElementById(`ext${idx}-h`);
+    const valM = document.getElementById(`ext${idx}-m`);
+    const btnOk = document.getElementById(`ext${idx}-ok`);
+    const cp = document.getElementById(`v-alarm${idx}-c`);
+    const bg = document.getElementById(`v-alarm${idx}-bg-c`);
+    const scr = document.getElementById(`v-alarm${idx}-screen-c`);
+    const fs = document.getElementById(`v-alarm${idx}-fs`);
+    const wBg = document.getElementById(`v-alarm${idx}-widget-bg`);
+    const wClear = document.getElementById(`v-alarm${idx}-bg-clear`);
+
+    cp.value = localStorage.getItem(`v-alarm${idx}-c-val`) || '#0078d4';
+    bg.value = localStorage.getItem(`v-alarm${idx}-bg-val`) || '#2ecc71';
+    scr.value = localStorage.getItem(`v-alarm${idx}-scr-val`) || '#ff0000';
+    fs.value = localStorage.getItem(`v-alarm${idx}-fs-val`) || '0.95';
+    wBg.value = localStorage.getItem(`v-alarm${idx}-wbg-val`) || '#ffffff';
+
+    const toggleView = (m) => {
+      pointRow.style.setProperty('display', m === 'interval' ? 'none' : 'flex', 'important');
+      intRow.style.setProperty('display', m === 'interval' ? 'flex' : 'none', 'important');
+    };
+    modeSel.onchange = (e) => toggleView(e.target.value);
+    toggleView(modeSel.value);
+
+    const applyLiveStyles = () => {
+      if (btn.textContent === '--:--') return;
+      btn.style.setProperty('color', cp.value, 'important');
+      btn.style.setProperty('font-size', fs.value + 'rem', 'important');
+      const bgStyle = localStorage.getItem(`v-alarm${idx}-wbg-val`) || '#ffffff';
+      btn.style.setProperty('background-color', bgStyle === 'transparent' ? 'transparent' : bgStyle, 'important');
+    };
+    const updateUI = (baseText, bracketsContent) => {
+      if (!baseText || baseText === '--:--') {
+        btn.innerHTML = '--:--';
+        btn.style.setProperty('color', 'transparent', 'important');
+        btn.style.setProperty('background-color', 'transparent', 'important');
+        return;
+      }
+      btn.innerHTML = `<span>${baseText}</span>${bracketsContent ? ' ' + bracketsContent : ''}`;
+      btn.style.setProperty('color', cp.value, 'important');
+      btn.style.setProperty('font-size', fs.value + 'rem', 'important');
+      const savedBg = localStorage.getItem(`v-alarm${idx}-wbg-val`) || '#ffffff';
+      btn.style.setProperty('background-color', savedBg === 'transparent' ? 'transparent' : savedBg, 'important');
+    };
+
+    cp.addEventListener('input', () => { localStorage.setItem(`v-alarm${idx}-c-val`, cp.value); applyLiveStyles(); });
+    fs.addEventListener('input', () => { localStorage.setItem(`v-alarm${idx}-fs-val`, fs.value); applyLiveStyles(); });
+    wBg.addEventListener('input', () => { localStorage.setItem(`v-alarm${idx}-wbg-val`, wBg.value); applyLiveStyles(); });
+    wClear.addEventListener('click', () => { localStorage.setItem(`v-alarm${idx}-wbg-val`, 'transparent'); applyLiveStyles(); });
+    bg.addEventListener('input', () => localStorage.setItem(`v-alarm${idx}-bg-val`, bg.value));
+    scr.addEventListener('input', () => localStorage.setItem(`v-alarm${idx}-scr-val`, scr.value));
+
+    // MP3 upload
+    document.getElementById(`db${idx}-btn`).onclick = () => document.getElementById(`db${idx}-file`).click();
+    document.getElementById(`db${idx}-file`).onchange = ev => {
+      const f = ev.target.files[0]; if (!f || !window[`db${idx}`]) return;
+      const nm = ' ✅ ' + f.name;
+      localStorage.setItem(`alarm${idx}-filename`, nm);
+      const tx = window[`db${idx}`].transaction(`mp3_store${idx}`, 'readwrite');
+      tx.objectStore(`mp3_store${idx}`).put(f, `track${idx}`).oncomplete = () => {
+        document.getElementById(`db${idx}-msg`).textContent = nm;
+      };
+    };
+
+    // Модальне вікно дзвінка
+    const modal = document.createElement('div');
+    modal.id = `alarm${idx}-modal`;
+    modal.style.cssText = 'position:fixed;inset:0;display:none;align-items:center;justify-content:center;z-index:99999;font-family:sans-serif;';
+    modal.innerHTML = `<div id="alarm${idx}-card-bg" style="padding:40px;border-radius:12px;text-align:center;color:white;min-width:340px;box-shadow:0 10px 30px rgba(0,0,0,0.3);"><h2>БУДИЛЬНИК №${idx}</h2><p id="alarm${idx}-sub-txt" style="font-weight:bold;font-size:1.3rem;margin-bottom:10px;">Час настав!</p><div id="alarm${idx}-pop-results" style="font-size:0.85rem;margin-bottom:15px;text-align:left;background:rgba(0,0,0,0.15);padding:10px;border-radius:6px;display:none;flex-direction:column;gap:4px;"></div><div style="margin-bottom:15px;"><div style="font-size:0.9rem;font-weight:bold;margin-bottom:6px;">Відкласти дзвінок:</div><button class="sz${idx}" data-m="5">5м</button><button class="sz${idx}" data-m="10">10м</button><button class="sz${idx}" data-m="20">20м</button><button class="sz${idx}" data-m="30">30м</button><button class="sz${idx}" data-m="60">60м</button></div><button id="alarm${idx}-stop-btn" style="padding:12px;font-size:1.1rem;font-weight:bold;background:white;color:#323130;border:none;border-radius:8px;cursor:pointer;width:100%;">STOP</button></div><style>.sz${idx}{padding:6px 10px;margin:3px;font-size:0.9rem;font-weight:bold;background:rgba(255,255,255,0.2);border:1px solid white;border-radius:6px;color:white;cursor:pointer;min-width:46px;}.sz${idx}:hover{background:white;color:#2ecc71;}</style>`;
+    document.body.appendChild(modal);
+
+    const clearAllState = () => {
+      localStorage.removeItem(`alarm${idx}-v`); localStorage.removeItem(`alarm${idx}-snz`);
+      localStorage.removeItem(`alarm${idx}-start-moment`); localStorage.removeItem(`alarm${idx}-triggered-moment`);
+      localStorage.removeItem(`alarm${idx}-abs-start`);
+      window[`snooze${idx}`] = 0; window[`alarm${idx}TriggeredMoment`] = 0; window[`alarm${idx}FirstStart`] = 0;
+      window[`alarm${idx}StartTimeStr`] = ''; window[`act${idx}`] = '';
+      alarmIn.value = ''; updateUI('', '');
+    };
+    const closeModal = () => { window[`audio${idx}`].pause(); window[`audio${idx}`].currentTime = 0; modal.style.setProperty('display', 'none', 'important'); };
+    document.getElementById(`alarm${idx}-stop-btn`).onclick = () => { clearAllState(); closeModal(); };
+    modal.querySelectorAll(`.sz${idx}`).forEach(b => {
+      b.onclick = (e) => {
+        window[`snooze${idx}`] = Date.now() + (parseInt(e.target.getAttribute('data-m')) || 5) * 60000;
+        localStorage.setItem(`alarm${idx}-snz`, window[`snooze${idx}`]);
+        closeModal();
+        const d = new Date(window[`snooze${idx}`]);
+        updateUI(String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0'), '');
+      };
+    });
+    wrapper.querySelectorAll(`.sn${idx}`).forEach(b => {
+      b.onclick = () => {
+        window[`snooze${idx}`] = Date.now() + parseInt(b.dataset.m) * 60000;
+        localStorage.setItem(`alarm${idx}-snz`, window[`snooze${idx}`]);
+      };
+    });
+
+    // Логіка встановлення/розрахунку
+    const initStartTimes = () => {
+      window[`alarm${idx}FirstStart`] = Date.now();
+      localStorage.setItem(`alarm${idx}-abs-start`, window[`alarm${idx}FirstStart`]);
+      const now = new Date();
+      window[`alarm${idx}StartTimeStr`] = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+      localStorage.setItem(`alarm${idx}-start-moment`, window[`alarm${idx}StartTimeStr`]);
+    };
+    const clearOnlyTimers = () => {
+      localStorage.removeItem(`alarm${idx}-snz`); localStorage.removeItem(`alarm${idx}-triggered-moment`);
+      window[`snooze${idx}`] = 0; window[`alarm${idx}TriggeredMoment`] = 0; window[`alarm${idx}FirstStart`] = 0;
+    };
+    btnOk.onclick = () => {
+      let s = '';
+      if (modeSel.value === 'interval') {
+        const d = new Date(); d.setHours(d.getHours() + (parseInt(valH.value) || 0)); d.setMinutes(d.getMinutes() + (parseInt(valM.value) || 0));
+        s = String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+        alarmIn.value = s;
+      } else { s = alarmIn.value; }
+      if (s) { clearOnlyTimers(); initStartTimes(); window[`act${idx}`] = s; localStorage.setItem(`alarm${idx}-v`, s); updateUI(s, ''); panel.classList.remove('open'); }
+    };
+    alarmIn.onchange = () => {
+      if (modeSel.value === 'point' && alarmIn.value) {
+        clearOnlyTimers(); initStartTimes();
+        window[`act${idx}`] = alarmIn.value; localStorage.setItem(`alarm${idx}-v`, alarmIn.value); updateUI(alarmIn.value, '');
+      }
+    };
+
+    const formatToHMS = (totalSeconds) => {
+      if (totalSeconds < 0) totalSeconds = 0;
+      const h = Math.floor(totalSeconds / 3600), m = Math.floor((totalSeconds % 3600) / 60), s = totalSeconds % 60;
+      return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+    };
+    let lastM = -1;
+    setInterval(() => {
+      const t = new Date();
+      const nowTimeStr = String(t.getHours()).padStart(2,'0') + ':' + String(t.getMinutes()).padStart(2,'0');
+      let targetActiveTime = window[`snooze${idx}`] > 0 ? new Date(window[`snooze${idx}`]) : null;
+      if (!targetActiveTime && window[`act${idx}`]) {
+        const [th, tm] = window[`act${idx}`].split(':').map(Number);
+        targetActiveTime = new Date(t); targetActiveTime.setHours(th, tm, 0, 0);
+        if (targetActiveTime <= t && window[`alarm${idx}TriggeredMoment`] === 0) targetActiveTime.setDate(targetActiveTime.getDate() + 1);
+      }
+      if (targetActiveTime || window[`alarm${idx}TriggeredMoment`] > 0) {
+        const totalElapsedSec = window[`alarm${idx}FirstStart`] > 0 ? Math.floor((Date.now() - window[`alarm${idx}FirstStart`]) / 1000) : 0;
+        const tStr = formatToHMS(totalElapsedSec);
+        let bracketsStr = '', remTimeText = '00:00:00';
+        if (targetActiveTime) {
+          const diffMs = targetActiveTime.getTime() - t.getTime();
+          if (diffMs > 0) remTimeText = formatToHMS(Math.floor(diffMs / 1000));
+        }
+        const displayEndVal = window[`snooze${idx}`] > 0
+          ? String(targetActiveTime.getHours()).padStart(2,'0') + ':' + String(targetActiveTime.getMinutes()).padStart(2,'0')
+          : window[`act${idx}`];
+        const displayEndValFull = displayEndVal + ':00';
+        const resBox = document.getElementById(`alarm${idx}-pop-results`);
+        if (window[`alarm${idx}TriggeredMoment`] > 0) {
+          bracketsStr = `<span style="font-weight:bold;margin-left:4px;">(${nowTimeStr}:00 | 00:00:00 | ${tStr} | ${window[`alarm${idx}StartTimeStr`]})</span>`;
+          if (resBox) { resBox.style.setProperty('display','flex','important'); resBox.innerHTML = `<div>• 1) Час дзвінка: ${nowTimeStr}:00</div><div>• 2) Залишок часу: 00:00:00</div><div>• 3) Пройшло від старту: ${tStr}</div><div>• 4) Час старту: ${window[`alarm${idx}StartTimeStr`]}</div>`; }
+        } else {
+          bracketsStr = `<span style="font-weight:bold;margin-left:4px;">(${remTimeText} | ${tStr} | ${window[`alarm${idx}StartTimeStr`]})</span>`;
+          if (resBox) { resBox.style.setProperty('display','flex','important'); resBox.innerHTML = `<div>• 1) Час дзвінка: ${displayEndValFull}</div><div>• 2) Залишок часу: ${remTimeText}</div><div>• 3) Пройшло від старту: ${tStr}</div><div>• 4) Час старту: ${window[`alarm${idx}StartTimeStr`]}</div>`; }
+        }
+        updateUI(displayEndValFull, bracketsStr);
+      } else { updateUI('', ''); }
+
+      if (t.getSeconds() === 0 && t.getMinutes() !== lastM) {
+        lastM = t.getMinutes(); let ring = false;
+        if (window[`snooze${idx}`] > 0 && Date.now() >= window[`snooze${idx}`]) ring = true;
+        else if (window[`snooze${idx}`] === 0 && window[`act${idx}`] === nowTimeStr) ring = true;
+        if (ring) {
+          if (window[`alarm${idx}TriggeredMoment`] === 0) { window[`alarm${idx}TriggeredMoment`] = Date.now(); localStorage.setItem(`alarm${idx}-triggered-moment`, window[`alarm${idx}TriggeredMoment`]); }
+          window[`alarm${idx}TriggeredMoment`] = 0; localStorage.removeItem(`alarm${idx}-triggered-moment`);
+          localStorage.removeItem(`alarm${idx}-v`); window[`act${idx}`] = ''; alarmIn.value = '';
+          if (window[`db${idx}`]) {
+            window[`db${idx}`].transaction(`mp3_store${idx}`).objectStore(`mp3_store${idx}`).get(`track${idx}`).onsuccess = ev => {
+              window[`audio${idx}`].src = ev.target.result ? URL.createObjectURL(ev.target.result) : '';
+              window[`audio${idx}`].volume = (parseInt(document.getElementById('alarm-vol')?.value) || 35) / 100;
+              window[`audio${idx}`].play().catch(e => console.log(e));
+            };
+          }
+          modal.querySelector(`#alarm${idx}-card-bg`).style.setProperty('background', localStorage.getItem(`v-alarm${idx}-bg-val`) || '#2ecc71', 'important');
+          modal.style.setProperty('background', localStorage.getItem(`v-alarm${idx}-scr-val`) || '#ff0000', 'important');
+          document.getElementById(`alarm${idx}-sub-txt`).textContent = 'Зараз ' + nowTimeStr;
+          modal.style.setProperty('display', 'flex', 'important');
+        }
+      }
+    }, 1000);
+  }
+
+  window.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('panel');
+    if (!panel) return;
+
+    const countRow = document.createElement('div');
+    countRow.style.cssText = 'border-top:2px solid #6264a7;padding-top:15px;margin-top:20px;font-family:sans-serif;';
+    countRow.innerHTML = `<h5 style="margin:0 0 8px 0;color:#6264a7;">Додаткові будильники (клони №2)</h5>
+      <div class="row"><span>Кількість:</span>
+        <input type="number" id="extra-alarms-count" min="0" max="15" step="1"
+          value="${localStorage.getItem('extra-alarms-count') || 0}"
+          style="width:60px;text-align:center;padding:4px;border:1px solid #ccc;border-radius:4px;">
+      </div>`;
+    const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+    if (saveBtn) saveBtn.before(countRow); else panel.appendChild(countRow);
+
+    document.getElementById('extra-alarms-count').addEventListener('change', (e) => {
+      localStorage.setItem('extra-alarms-count', e.target.value);
+      location.reload();
+    });
+
+    const n = parseInt(localStorage.getItem('extra-alarms-count')) || 0;
+    for (let i = 3; i < 3 + n; i++) createAlarmClone(i);
+  });
+})();
+</script>
+
+<!-- ===== РАДІУС PM-ЦИФР (ОДИН НЕЗАЛЕЖНИЙ БЛОК) ===== -->
+<script>
+(() => {
+  window.addEventListener('DOMContentLoaded', () => {
+    const panel = document.getElementById('panel');
+    if (!panel) return;
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `PM цифри (радіус) <input type="range" id="v-pm-radius-fix" min="0.8" max="3" step="0.05" value="${localStorage.getItem('v-pm-radius-fix') || '1.5'}">`;
+    const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+    if (saveBtn) saveBtn.before(row); else panel.appendChild(row);
+
+    const applyRadius = (mult) => {
+      const baseFs = parseFloat(localStorage.getItem('v-num-size-custom')) || 32;
+      document.querySelectorAll('.num-pm-container').forEach(el => {
+        el.style.paddingTop = `calc(${baseFs}px * ${mult})`;
+      });
+    };
+
+    const slider = document.getElementById('v-pm-radius-fix');
+    slider.addEventListener('input', () => {
+      localStorage.setItem('v-pm-radius-fix', slider.value);
+      applyRadius(slider.value);
+    });
+
+    // PM-цифри самі генеруються з затримкою ~500мс, тож пробуємо кілька разів
+    [700, 1200, 2000].forEach(delay => setTimeout(() => applyRadius(slider.value), delay));
   });
 })();
 </script>

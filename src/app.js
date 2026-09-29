@@ -183,11 +183,11 @@ let innerHtml = `
 <button id="year-btn" style="
 width:var(--hours-w, 60px);
 border:none;
-background:#ffffff;
+background:var(--year-bg-c, #ffffff);
 cursor:pointer;
 font-weight:bold;
 font-size:16px;
-color:#ff0000;
+color:var(--year-txt-c, #ff0000);
 ">
 ${selectedYear}
 </button>
