@@ -2562,4 +2562,726 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<!-- ===== БЛОК 1/3: ВІДЖЕТ КАЛЕНДАРЯ МІСЯЦЯ (ядро) ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('mw-widget')) return;
+
+    const MONTHS = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
+    const DAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Нд"];
+    const store = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+    // ---------- Стилі (усі кольори/розмір керуються змінними --mw-* з Блоку 2, є запасні значення) ----------
+    const st = document.createElement('style');
+    st.id = 'mw-style';
+    st.textContent = `
+      #mw-widget { position: fixed; left: 20px; top: 100px; z-index: 950;
+        width: var(--mw-w, 320px); max-width: calc(100vw - 10px);
+        font-size: calc(var(--mw-w, 320px) / 22);
+        background: var(--mw-bg, #ffffff); color: var(--mw-txt, #000000);
+        border: 2px solid var(--mw-brd, #cccccc); border-radius: .8em; padding: .7em;
+        box-shadow: 0 .6em 1.8em rgba(0,0,0,.25);
+        font-family: 'Segoe UI', sans-serif; box-sizing: border-box;
+        user-select: none; -webkit-user-select: none; cursor: move; touch-action: none; }
+      html[data-mw-show="hide"] #mw-widget { display: none !important; }
+      #mw-widget .mw-head { display: flex; align-items: center; justify-content: space-between; gap: .4em; margin-bottom: .5em; }
+      #mw-widget .mw-title { flex: 1; font-weight: 800; font-size: 1.2em; color: var(--mw-title, #000000);
+        background: none; border: none; cursor: pointer; font-family: inherit; padding: .1em .2em; }
+      #mw-widget .mw-nav { width: 1.9em; height: 1.9em; border: 1px solid var(--mw-brd, #cccccc); border-radius: .4em;
+        background: transparent; color: var(--mw-txt, #000000); font-size: 1em; font-weight: 800; cursor: pointer; line-height: 1; }
+      #mw-widget .mw-nav:disabled { opacity: .3; cursor: default; }
+      #mw-widget .mw-grid { display: grid; grid-template-columns: 2em repeat(7, 1fr); gap: .25em; }
+      #mw-widget .mw-wd { text-align: center; font-weight: 700; font-size: .85em; color: var(--mw-wd, #555555); padding: .2em 0; }
+      #mw-widget .mw-wk { text-align: center; align-self: center; font-weight: 700; font-size: .8em; color: var(--mw-wk, #6264a7); }
+      #mw-widget .mw-day { padding: .45em 0; border: 1px solid var(--mw-brd, #cccccc); border-radius: .4em;
+        background: transparent; color: var(--mw-txt, #000000); font-weight: 700; font-size: .95em; font-family: inherit; cursor: pointer; }
+      #mw-widget .mw-day:hover { filter: brightness(.93); }
+      #mw-widget .mw-day.has-note { background: var(--mw-note-bg, #ffeb3b); color: var(--mw-note-txt, #000000); border-color: #fbc02d; }
+      #mw-widget .mw-day.today { border: 2px solid var(--mw-today, #ff0000); }
+      #mw-widget .mw-notes { margin-top: .6em; max-height: 9em; overflow-y: auto; font-size: .85em;
+        border-top: 1px dashed var(--mw-brd, #cccccc); cursor: default; touch-action: pan-y; user-select: text; -webkit-user-select: text; }
+      html[data-mw-list="off"] #mw-widget .mw-notes { display: none; }
+      #mw-widget .mw-note-item { display: flex; gap: .5em; padding: .3em 0; cursor: pointer; }
+      #mw-widget .mw-note-item:hover { background: rgba(128,128,128,.12); }
+      #mw-widget .mw-note-day { font-weight: 800; min-width: 1.8em; color: var(--mw-wk, #6264a7); }
+      #mw-widget .mw-note-txt { flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical; word-break: break-word; white-space: pre-wrap; color: var(--mw-txt, #000000); }
+      #mw-widget .mw-empty { padding: .4em 0; opacity: .6; }
+    `;
+    document.head.appendChild(st);
+
+    // ---------- Каркас ----------
+    const w = document.createElement('div');
+    w.id = 'mw-widget';
+    w.innerHTML = `
+      <div class="mw-head">
+        <button type="button" class="mw-nav mw-prev" data-d="-1" aria-label="Попередній місяць">&#8249;</button>
+        <button type="button" class="mw-title" title="Повернутись до поточного місяця"></button>
+        <button type="button" class="mw-nav mw-next" data-d="1" aria-label="Наступний місяць">&#8250;</button>
+      </div>
+      <div class="mw-grid"></div>
+      <div class="mw-notes"></div>`;
+    document.body.appendChild(w);
+    const elTitle = w.querySelector('.mw-title');
+    const elGrid = w.querySelector('.mw-grid');
+    const elNotes = w.querySelector('.mw-notes');
+    const btnPrev = w.querySelector('.mw-prev');
+    const btnNext = w.querySelector('.mw-next');
+
+    // ---------- Дані: та сама база й ті самі ключі, що й у головному календарі: РІК-МІСЯЦЬ(0-11)-ДЕНЬ ----------
+    const getNotes = () => {
+      try { return JSON.parse(store.get('calendar_notes') || '{}') || {}; } catch (e) { return {}; }
+    };
+    const isoWeek = (date) => {
+      const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+      d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+      const y0 = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+      return Math.ceil(((d - y0) / 864e5 + 1) / 7);
+    };
+
+    // ---------- Малювання ----------
+    let followToday = true;
+    let viewIdx = 0;          // рік*12 + місяць
+    let lastSig = '';
+    const hidden = () => document.documentElement.dataset.mwShow === 'hide';
+
+    function render(force) {
+      if (hidden()) return;
+      const t = new Date();
+      const ty = t.getFullYear();
+      const minIdx = (ty - 1) * 12, maxIdx = (ty + 1) * 12 + 11;   // ті самі 3 роки, що й у вибору року
+      if (followToday) viewIdx = ty * 12 + t.getMonth();
+      viewIdx = Math.max(minIdx, Math.min(maxIdx, viewIdx));
+
+      const raw = store.get('calendar_notes') || '';
+      const sig = raw + '|' + viewIdx + '|' + t.toDateString();
+      if (!force && sig === lastSig) return;                        // нічого не змінилось — нуль роботи
+      lastSig = sig;
+
+      const y = Math.floor(viewIdx / 12), m = viewIdx % 12;
+      const notes = getNotes();
+      const dim = new Date(y, m + 1, 0).getDate();
+      const offset = (new Date(y, m, 1).getDay() + 6) % 7;
+
+      elTitle.textContent = MONTHS[m] + ' ' + y;
+      btnPrev.disabled = viewIdx <= minIdx;
+      btnNext.disabled = viewIdx >= maxIdx;
+
+      let h = '<div class="mw-wd">Тиж</div>' + DAYS.map((d) => '<div class="mw-wd">' + d + '</div>').join('');
+      for (let first = 1 - offset; first <= dim; first += 7) {
+        h += '<div class="mw-wk">' + isoWeek(new Date(y, m, first)) + '</div>';
+        for (let i = 0; i < 7; i++) {
+          const d = first + i;
+          if (d < 1 || d > dim) { h += '<div></div>'; continue; }
+          const note = notes[y + '-' + m + '-' + d];
+          const isToday = y === ty && m === t.getMonth() && d === t.getDate();
+          h += '<button type="button" class="mw-day' + (note ? ' has-note' : '') + (isToday ? ' today' : '') +
+               '" data-day="' + d + '"' + (note ? ' title="' + esc(note) + '"' : '') + '>' + d + '</button>';
+        }
+      }
+      elGrid.innerHTML = h;
+
+      const prefix = y + '-' + m + '-';
+      const items = Object.keys(notes)
+        .filter((k) => k.indexOf(prefix) === 0 && String(notes[k]).trim() !== '')
+        .map((k) => parseInt(k.slice(prefix.length), 10))
+        .filter((d) => d >= 1 && d <= dim)
+        .sort((a, b) => a - b);
+      elNotes.innerHTML = items.length
+        ? items.map((d) => '<div class="mw-note-item" data-day="' + d + '"><span class="mw-note-day">' + d +
+            '</span><span class="mw-note-txt">' + esc(notes[prefix + d]) + '</span></div>').join('')
+        : '<div class="mw-empty">Нотаток цього місяця немає</div>';
+    }
+
+    // ---------- Кліки ----------
+    function openNote(d) {
+      const y = Math.floor(viewIdx / 12), m = viewIdx % 12;
+      window.dispatchEvent(new CustomEvent('mw:open-note', {
+        detail: { key: y + '-' + m + '-' + d, label: d + ' ' + MONTHS[m] + ' ' + y }
+      }));
+    }
+    w.addEventListener('click', (e) => {
+      const nav = e.target.closest('.mw-nav');
+      if (nav) { followToday = false; viewIdx += parseInt(nav.dataset.d, 10); render(true); return; }
+      if (e.target.closest('.mw-title')) { followToday = true; render(true); return; }
+      const hit = e.target.closest('.mw-day, .mw-note-item');
+      if (hit) openNote(parseInt(hit.dataset.day, 10));
+    });
+
+    // ---------- Перетягування (миша + дотик), позиція зберігається ----------
+    let drag = null;
+    w.addEventListener('pointerdown', (e) => {
+      if (e.button > 0 || e.target.closest('button, .mw-notes')) return;
+      const r = w.getBoundingClientRect();
+      drag = { ox: e.clientX - r.left, oy: e.clientY - r.top };
+      try { w.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    w.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      const x = Math.max(0, Math.min(window.innerWidth - w.offsetWidth, e.clientX - drag.ox));
+      const y = Math.max(0, Math.min(window.innerHeight - 40, e.clientY - drag.oy));
+      w.style.left = x + 'px';
+      w.style.top = y + 'px';
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      drag = null;
+      store.set('mw-left', w.style.left);
+      store.set('mw-top', w.style.top);
+    };
+    w.addEventListener('pointerup', endDrag);
+    w.addEventListener('pointercancel', endDrag);
+
+    const resetPos = () => { store.del('mw-left'); store.del('mw-top'); w.style.left = '20px'; w.style.top = '100px'; };
+    window.addEventListener('mw:reset-pos', resetPos);
+
+    const L = store.get('mw-left'), T = store.get('mw-top');
+    if (L && T) { w.style.left = L; w.style.top = T; }
+    requestAnimationFrame(() => {                       // якщо збережена позиція опинилась поза екраном — повернути
+      const r = w.getBoundingClientRect();
+      if (r.right < 40 || r.left > window.innerWidth - 40 || r.top > window.innerHeight - 40 || r.bottom < 40) resetPos();
+    });
+
+    // ---------- Оновлення: тільки при зміні нотаток/дати/налаштувань ----------
+    window.addEventListener('mw:settings', () => render(true));
+    setInterval(() => { if (!document.hidden) render(false); }, 5000);
+    render(true);
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 2/3: НАЛАШТУВАННЯ ВІДЖЕТА МІСЯЦЯ (в панелі ⚙️) ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('mw-settings-box')) return;
+
+    const DEF = {
+      'mw-show': 'show', 'mw-list': 'on', 'mw-w': '320',
+      'mw-bg': '#ffffff', 'mw-bg-op': '100', 'mw-txt': '#000000', 'mw-title': '#000000',
+      'mw-wd': '#555555', 'mw-wk': '#6264a7', 'mw-note-bg': '#ffeb3b', 'mw-note-txt': '#000000',
+      'mw-today': '#ff0000', 'mw-brd': '#cccccc'
+    };
+    const get = (k) => { try { return localStorage.getItem('mws-' + k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem('mws-' + k, v); } catch (e) {} };
+
+    const box = document.createElement('div');
+    box.id = 'mw-settings-box';
+    box.style.cssText = 'border-top:2px solid #6264a7; padding-top:12px; margin:15px 0; font-family:sans-serif;';
+    box.innerHTML = `
+      <h4 style="margin:0 0 10px 0;">📆 Віджет місяця</h4>
+      <div class="row">Віджет у додатку
+        <select id="mw-show" style="padding:4px; font-weight:bold;">
+          <option value="show">Показувати</option>
+          <option value="hide">Сховати</option>
+        </select></div>
+      <div class="row">Розмір (ширина, px) <input type="range" id="mw-w" min="200" max="700" step="5"></div>
+      <div class="row">Колір фону <input type="color" id="mw-bg"></div>
+      <div class="row">Прозорість фону (%) <input type="range" id="mw-bg-op" min="0" max="100" step="1"></div>
+      <div class="row">Колір тексту (дні) <input type="color" id="mw-txt"></div>
+      <div class="row">Колір заголовка місяця <input type="color" id="mw-title"></div>
+      <div class="row">Колір назв днів тижня <input type="color" id="mw-wd"></div>
+      <div class="row">Колір номерів тижнів <input type="color" id="mw-wk"></div>
+      <div class="row">Фон днів з нотатками <input type="color" id="mw-note-bg"></div>
+      <div class="row">Текст днів з нотатками <input type="color" id="mw-note-txt"></div>
+      <div class="row">Рамка сьогодні <input type="color" id="mw-today"></div>
+      <div class="row">Колір ліній/рамки <input type="color" id="mw-brd"></div>
+      <div class="row">Список нотаток під календарем
+        <select id="mw-list" style="padding:4px; font-weight:bold;">
+          <option value="on">Показувати</option>
+          <option value="off">Сховати</option>
+        </select></div>
+      <div class="row"><button type="button" id="mw-reset-pos"
+        style="width:100%; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">
+        Повернути віджет на місце</button></div>`;
+
+    const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+    if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+
+    const el = (id) => document.getElementById(id);
+    Object.keys(DEF).forEach((id) => { el(id).value = get(id) || DEF[id]; });
+
+    const hexA = (hex, op) => {
+      const n = parseInt(hex.slice(1), 16);
+      return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + (op / 100) + ')';
+    };
+    function apply() {
+      const root = document.documentElement, s = root.style, v = (id) => el(id).value;
+      root.dataset.mwShow = v('mw-show');
+      root.dataset.mwList = v('mw-list');
+      s.setProperty('--mw-w', v('mw-w') + 'px');
+      s.setProperty('--mw-bg', hexA(v('mw-bg'), v('mw-bg-op')));
+      [['txt', 'mw-txt'], ['title', 'mw-title'], ['wd', 'mw-wd'], ['wk', 'mw-wk'],
+       ['note-bg', 'mw-note-bg'], ['note-txt', 'mw-note-txt'], ['today', 'mw-today'], ['brd', 'mw-brd']
+      ].forEach(([name, id]) => s.setProperty('--mw-' + name, v(id)));
+      window.dispatchEvent(new Event('mw:settings'));
+    }
+    const onChange = (e) => {
+      const id = e.target && e.target.id;
+      if (!id || !(id in DEF)) return;
+      set(id, e.target.value);
+      apply();
+    };
+    box.addEventListener('input', onChange);
+    box.addEventListener('change', onChange);
+    el('mw-reset-pos').onclick = () => window.dispatchEvent(new Event('mw:reset-pos'));
+
+    apply();
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 3/3: ВІКНО РЕДАГУВАННЯ НОТАТКИ ДЛЯ ВІДЖЕТА МІСЯЦЯ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('mw-note-modal')) return;
+
+    const st = document.createElement('style');
+    st.textContent = `
+      #mw-note-modal { display: none; position: fixed; inset: 0; z-index: 10001; background: rgba(0,0,0,.5);
+        align-items: center; justify-content: center; font-family: sans-serif; }
+      #mw-note-modal.open { display: flex; }
+      #mw-note-modal .mw-nm-box { background: #fff; color: #000; width: 100vw; height: 100vh; box-sizing: border-box;
+        padding: 20px; display: flex; flex-direction: column; }
+      #mw-note-modal .mw-nm-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+      #mw-note-modal .mw-nm-title { margin: 0; font-size: 18px; font-weight: bold; }
+      #mw-note-modal .mw-nm-close { font-size: 24px; cursor: pointer; background: none; border: none; color: #666; }
+      #mw-note-modal textarea { flex: 1; width: 100%; box-sizing: border-box; padding: 15px; font-size: 1.4rem;
+        line-height: 1.5; resize: none; }
+      #mw-note-modal .mw-nm-save { width: 100%; padding: 15px; margin-top: 10px; background: #4CAF50; color: #fff; border: none;
+        border-radius: 4px; cursor: pointer; font-size: 1.2rem; font-weight: bold; }`;
+    document.head.appendChild(st);
+
+    const modal = document.createElement('div');
+    modal.id = 'mw-note-modal';
+    modal.innerHTML = `
+      <div class="mw-nm-box">
+        <div class="mw-nm-head"><h3 class="mw-nm-title"></h3><button type="button" class="mw-nm-close">&times;</button></div>
+        <textarea placeholder="Введіть ваш текст тут..."></textarea>
+        <button type="button" class="mw-nm-save">Зберегти</button>
+      </div>`;
+    document.body.appendChild(modal);
+
+    const title = modal.querySelector('.mw-nm-title');
+    const ta = modal.querySelector('textarea');
+    let activeKey = null;
+
+    const getNotes = () => {
+      try { return JSON.parse(localStorage.getItem('calendar_notes') || '{}') || {}; } catch (e) { return {}; }
+    };
+    const close = () => { modal.classList.remove('open'); activeKey = null; };
+
+    window.addEventListener('mw:open-note', (e) => {
+      activeKey = e.detail.key;
+      title.textContent = e.detail.label;
+      ta.value = getNotes()[activeKey] || '';
+      modal.classList.add('open');
+      ta.focus();
+    });
+
+    function save() {
+      if (!activeKey) return;
+      const notes = getNotes();
+      const text = ta.value.trim();
+      if (text) notes[activeKey] = text; else delete notes[activeKey];
+      localStorage.setItem('calendar_notes', JSON.stringify(notes));
+      close();
+      // Перезавантаження — як у вашому блоці нотаток верхніх днів тижня: так головний календар
+      // (його внутрішня копія нотаток) гарантовано бере свіжі дані і не затирає їх старою версією.
+      setTimeout(() => location.reload(), 50);
+    }
+    modal.querySelector('.mw-nm-save').onclick = save;
+    modal.querySelector('.mw-nm-close').onclick = close;
+    modal.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') close();
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) save();
+    });
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 4/7: ТОВСТА РАМКА «СЬОГОДНІ» У ВІДЖЕТІ МІСЯЦЯ (регульована товщина) ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('mw-today-w-row')) return;
+    const KEY = 'mws-mw-today-w', DEF = '16';
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+    const st = document.createElement('style');
+    st.textContent = `
+      html #mw-widget .mw-day.today {
+        border: 1px solid var(--mw-today, #ff0000) !important;
+        box-shadow: inset 0 0 0 var(--mw-today-w, 16px) var(--mw-today, #ff0000) !important;
+      }`;
+    document.head.appendChild(st);
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.id = 'mw-today-w-row';
+    row.innerHTML = 'Товщина рамки сьогодні (px) <input type="range" id="mw-today-w" min="1" max="30" step="1">';
+    const anchor = document.getElementById('mw-today');
+    if (anchor && anchor.closest('.row')) anchor.closest('.row').after(row);
+    else {
+      const panel = document.getElementById('panel');
+      const saveBtn = panel && panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(row); else if (panel) panel.appendChild(row);
+    }
+
+    const input = document.getElementById('mw-today-w');
+    input.value = get(KEY) || DEF;
+    const apply = () => document.documentElement.style.setProperty('--mw-today-w', input.value + 'px');
+    input.addEventListener('input', () => { set(KEY, input.value); apply(); });
+    apply();
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 5/7: РАМКА (колір + товщина) ДЛЯ КЛІТИНКИ ПОТОЧНОГО ДНЯ В ШАПЦІ ТАБЛИЦІ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('hf-row-w')) return;
+    const root = document.documentElement;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+
+    const st = document.createElement('style');
+    st.textContent = `
+      .grid-hdr .hdr-cell.today {
+        box-shadow: inset 0 0 0 var(--hf-w, 8px) var(--hf-c, #ff0000) !important;
+      }`;
+    document.head.appendChild(st);
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="row" id="hf-row-c">Рамка поточного дня (колір) <input type="color" id="hf-c"></div>
+      <div class="row" id="hf-row-w">Рамка поточного дня (товщина, px) <input type="range" id="hf-w" min="0" max="30" step="1"></div>`;
+    const anchor = document.getElementById('v-cur-day-c') || document.getElementById('v-today-c');
+    if (anchor && anchor.closest('.row')) anchor.closest('.row').after(wrap);
+    else {
+      const panel = document.getElementById('panel');
+      const saveBtn = panel && panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(wrap); else if (panel) panel.appendChild(wrap);
+    }
+
+    const c = document.getElementById('hf-c'), w = document.getElementById('hf-w');
+    c.value = get('hf-c') || '#ff0000';
+    w.value = get('hf-w') || '8';
+    const apply = () => {
+      root.style.setProperty('--hf-c', c.value);
+      root.style.setProperty('--hf-w', w.value + 'px');
+    };
+    c.addEventListener('input', () => { set('hf-c', c.value); apply(); });
+    w.addEventListener('input', () => { set('hf-w', w.value); apply(); });
+    apply();
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 6/7: BADGE ЧАСУ ТАБЛИЦІ — НА МІСЦІ АБО РУХОМИЙ ВІДЖЕТ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('nb-float')) return;
+    const root = document.documentElement;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const del = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+    const pad = (n) => String(n).padStart(2, '0');
+
+    const st = document.createElement('style');
+    st.textContent = `
+      html[data-nb-mode="float"] .cell.now-cell::before { display: none !important; }
+      #nb-float { display: none; position: fixed; left: 120px; top: 150px; z-index: 940; cursor: move;
+        touch-action: none; user-select: none; -webkit-user-select: none; white-space: nowrap;
+        font-family: 'Segoe UI', sans-serif; font-weight: 800; line-height: 1.2;
+        font-size: var(--nb-fs, 28px); color: var(--now-badge-c, #d93b3b);
+        background: var(--now-badge-bg, #ffffff); border: 1px solid var(--now-badge-brd, #cccccc);
+        padding: 2px 6px; border-radius: 999px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+      html[data-nb-mode="float"] #nb-float { display: block; }`;
+    document.head.appendChild(st);
+
+    const el = document.createElement('div');
+    el.id = 'nb-float';
+    document.body.appendChild(el);
+
+    // розмір badge береться з вашого повзунка «Badge час (розмір)»
+    const syncFs = () => {
+      const s = document.getElementById('v-now-badge-fs');
+      root.style.setProperty('--nb-fs', ((s && s.value) || get('v-now-badge-fs') || '28') + 'px');
+    };
+    document.addEventListener('input', (e) => { if (e.target && e.target.id === 'v-now-badge-fs') syncFs(); });
+    syncFs();
+
+    // живий час (працює лише в режимі «рухомий»)
+    const tick = () => {
+      if (root.dataset.nbMode !== 'float') return;
+      const t = new Date();
+      el.textContent = pad(t.getHours()) + ':' + pad(t.getMinutes()) + ':' + pad(t.getSeconds());
+    };
+    setInterval(tick, 1000);
+
+    const L = get('nb-left'), T = get('nb-top');
+    if (L && T) { el.style.left = L; el.style.top = T; }
+    const keepInView = () => {
+      const r = el.getBoundingClientRect();
+      if (r.right < 30 || r.left > innerWidth - 30 || r.top > innerHeight - 30 || r.bottom < 30) {
+        el.style.left = '120px'; el.style.top = '150px'; del('nb-left'); del('nb-top');
+      }
+    };
+    window.addEventListener('resize', keepInView);
+
+    let drag = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      const r = el.getBoundingClientRect();
+      drag = { ox: e.clientX - r.left, oy: e.clientY - r.top };
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      el.style.left = Math.max(0, Math.min(innerWidth - el.offsetWidth, e.clientX - drag.ox)) + 'px';
+      el.style.top = Math.max(0, Math.min(innerHeight - el.offsetHeight, e.clientY - drag.oy)) + 'px';
+    });
+    const end = () => { if (!drag) return; drag = null; set('nb-left', el.style.left); set('nb-top', el.style.top); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="row">Badge час: положення
+        <select id="nb-mode" style="padding:4px; font-weight:bold;">
+          <option value="cell">На місці (у клітинці)</option>
+          <option value="float">Рухомий віджет</option>
+        </select></div>
+      <div class="row"><button type="button" id="nb-reset"
+        style="width:100%; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">
+        Повернути badge на місце</button></div>`;
+    const anchor = document.getElementById('v-now-badge-brd');
+    if (anchor && anchor.closest('.row')) anchor.closest('.row').after(wrap);
+    else {
+      const panel = document.getElementById('panel');
+      const saveBtn = panel && panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(wrap); else if (panel) panel.appendChild(wrap);
+    }
+
+    const sel = document.getElementById('nb-mode');
+    const apply = (mode) => { root.dataset.nbMode = mode; tick(); if (mode === 'float') keepInView(); };
+    sel.value = get('nb-mode') || 'cell';
+    sel.addEventListener('change', () => { set('nb-mode', sel.value); apply(sel.value); });
+    document.getElementById('nb-reset').onclick = () => {
+      del('nb-left'); del('nb-top');
+      el.style.left = '120px'; el.style.top = '150px';
+      sel.value = 'cell'; set('nb-mode', 'cell'); apply('cell');
+    };
+    apply(sel.value);
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 7/7: ТЕКСТ ПІД ГОДИННИКОМ (час + дата) — ПІД ГОДИННИКОМ АБО РУХОМИЙ ВІДЖЕТ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const el = document.querySelector('.digit-info');
+    const widget = document.getElementById('master-widget');
+    if (!el || !widget || document.getElementById('dg-mode')) return;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const del = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+    const st = document.createElement('style');
+    st.textContent = `
+      .digit-info.dg-float { position: fixed; z-index: 945; margin: 0 !important; cursor: move;
+        touch-action: none; user-select: none; -webkit-user-select: none; white-space: nowrap;
+        filter: drop-shadow(0 12px 30px rgba(0,0,0,0.15)); }`;
+    document.head.appendChild(st);
+
+    const clamp = () => {
+      const r = el.getBoundingClientRect();
+      el.style.left = Math.max(0, Math.min(innerWidth - r.width, r.left)) + 'px';
+      el.style.top = Math.max(0, Math.min(innerHeight - r.height, r.top)) + 'px';
+    };
+    // «Рухомий»: переносимо той самий елемент у body (час і дата й далі оновлюються додатком)
+    function toFloat() {
+      if (el.classList.contains('dg-float')) return;
+      const r = el.getBoundingClientRect();
+      const L = get('dg-left'), T = get('dg-top');
+      document.body.appendChild(el);
+      el.classList.add('dg-float');
+      el.style.left = L || (r.left + 'px');
+      el.style.top = T || (r.top + 'px');
+      clamp();
+    }
+    // «Під годинником»: повертаємо елемент назад у віджет годинника
+    function toDefault() {
+      if (!el.classList.contains('dg-float')) return;
+      el.classList.remove('dg-float');
+      el.style.left = '';
+      el.style.top = '';
+      widget.appendChild(el);
+    }
+
+    let drag = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (!el.classList.contains('dg-float') || e.button > 0) return;
+      const r = el.getBoundingClientRect();
+      drag = { ox: e.clientX - r.left, oy: e.clientY - r.top };
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      el.style.left = Math.max(0, Math.min(innerWidth - el.offsetWidth, e.clientX - drag.ox)) + 'px';
+      el.style.top = Math.max(0, Math.min(innerHeight - el.offsetHeight, e.clientY - drag.oy)) + 'px';
+    });
+    const end = () => { if (!drag) return; drag = null; set('dg-left', el.style.left); set('dg-top', el.style.top); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+    window.addEventListener('resize', () => { if (el.classList.contains('dg-float')) clamp(); });
+
+    const wrap = document.createElement('div');
+    wrap.innerHTML = `
+      <div class="row">Текст під годинником: положення
+        <select id="dg-mode" style="padding:4px; font-weight:bold;">
+          <option value="default">Під годинником</option>
+          <option value="float">Рухомий віджет</option>
+        </select></div>
+      <div class="row"><button type="button" id="dg-reset"
+        style="width:100%; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">
+        Повернути під годинник</button></div>`;
+    const anchor = document.getElementById('v-dig-bg');
+    if (anchor && anchor.closest('.row')) anchor.closest('.row').after(wrap);
+    else {
+      const panel = document.getElementById('panel');
+      const saveBtn = panel && panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(wrap); else if (panel) panel.appendChild(wrap);
+    }
+
+    const sel = document.getElementById('dg-mode');
+    const apply = (mode) => { if (mode === 'float') toFloat(); else toDefault(); };
+    sel.value = get('dg-mode') || 'default';
+    sel.addEventListener('change', () => { set('dg-mode', sel.value); apply(sel.value); });
+    document.getElementById('dg-reset').onclick = () => {
+      del('dg-left'); del('dg-top');
+      sel.value = 'default'; set('dg-mode', 'default'); apply('default');
+    };
+    apply(sel.value);
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 8: ДИЗАЙН (КОЛЬОРИ) ВІКНА НОТАТКИ ДНЯ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('nm-settings-box')) return;
+    const root = document.documentElement;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const del = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+    const FIELDS = [
+      ['nm-bg', 'Фон вікна', '#ffffff'],
+      ['nm-title', 'Колір дати (заголовок)', '#000000'],
+      ['nm-close', 'Колір кнопки ×', '#666666'],
+      ['nm-ta-bg', 'Фон поля тексту', '#ffffff'],
+      ['nm-ta-txt', 'Колір тексту нотатки', '#000000'],
+      ['nm-ph', 'Колір підказки в полі', '#757575'],
+      ['nm-ta-brd', 'Колір рамки поля', '#767676'],
+      ['nm-focus', 'Колір рамки при введенні', '#0060df'],
+      ['nm-save-bg', 'Фон кнопки «Зберегти»', '#4caf50'],
+      ['nm-save-txt', 'Колір тексту кнопки', '#ffffff']
+    ];
+
+    // ---------- Стилі: діють на вікно нотатки днів (#day-modal), на вікно віджета місяця і на «приклад» ----------
+    const st = document.createElement('style');
+    st.textContent = `
+      #day-modal .cal-modal-content, #mw-note-modal .mw-nm-box, #nm-preview .nm-box { background: var(--nm-bg, #ffffff) !important; }
+      #day-modal-title, #mw-note-modal .mw-nm-title, #nm-preview .nm-title { color: var(--nm-title, #000000) !important; }
+      #day-modal-close, #mw-note-modal .mw-nm-close, #nm-preview .nm-close { color: var(--nm-close, #666666) !important; }
+      #day-note-text, #mw-note-modal textarea, #nm-preview textarea {
+        background: var(--nm-ta-bg, #ffffff) !important; color: var(--nm-ta-txt, #000000) !important;
+        border: 1px solid var(--nm-ta-brd, #767676) !important; }
+      #day-note-text::placeholder, #mw-note-modal textarea::placeholder, #nm-preview textarea::placeholder {
+        color: var(--nm-ph, #757575) !important; opacity: 1 !important; }
+      #day-note-text:focus, #mw-note-modal textarea:focus, #nm-preview textarea:focus {
+        outline: 2px solid var(--nm-focus, #0060df) !important; outline-offset: 0 !important;
+        border-color: var(--nm-focus, #0060df) !important; }
+      #day-note-save, #mw-note-modal .mw-nm-save, #nm-preview .nm-save {
+        background: var(--nm-save-bg, #4caf50) !important; color: var(--nm-save-txt, #ffffff) !important; }
+
+      #nm-preview { display: none; position: fixed; inset: 0; z-index: 10002; font-family: sans-serif; }
+      #nm-preview.open { display: flex; }
+      #nm-preview .nm-box { width: 100vw; height: 100vh; box-sizing: border-box; padding: 20px; display: flex; flex-direction: column; }
+      #nm-preview .nm-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+      #nm-preview .nm-title { margin: 0; font-size: 18px; font-weight: bold; }
+      #nm-preview .nm-close { font-size: 24px; cursor: pointer; background: none; border: none; }
+      #nm-preview textarea { flex: 1; width: 100%; box-sizing: border-box; padding: 15px; font-size: 1.4rem; line-height: 1.5; resize: none; }
+      #nm-preview .nm-save { width: 100%; padding: 15px; margin-top: 10px; border: none; border-radius: 4px; cursor: pointer;
+        font-size: 1.2rem; font-weight: bold; }`;
+    document.head.appendChild(st);
+
+    // ---------- Налаштування в панелі ⚙️ ----------
+    const box = document.createElement('div');
+    box.id = 'nm-settings-box';
+    box.style.cssText = 'border-top:2px solid #6264a7; padding-top:12px; margin:15px 0; font-family:sans-serif;';
+    box.innerHTML = '<h4 style="margin:0 0 10px 0;">📝 Дизайн вікна нотатки</h4>' +
+      FIELDS.map((f) => '<div class="row">' + f[1] + ' <input type="color" id="' + f[0] + '"></div>').join('') +
+      `<div class="row"><button type="button" id="nm-show" style="width:100%; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">Показати приклад вікна</button></div>
+       <div class="row"><button type="button" id="nm-reset" style="width:100%; padding:6px; cursor:pointer; background:#e74c3c; color:#fff; border:none; border-radius:4px; font-weight:bold;">Скинути кольори вікна</button></div>`;
+    const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+    if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+
+    const apply = () => FIELDS.forEach((f) => root.style.setProperty('--' + f[0], document.getElementById(f[0]).value));
+    FIELDS.forEach((f) => { document.getElementById(f[0]).value = get(f[0]) || f[2]; });
+    box.addEventListener('input', (e) => {
+      const id = e.target && e.target.id;
+      if (!FIELDS.some((f) => f[0] === id)) return;
+      set(id, e.target.value);
+      apply();
+    });
+    document.getElementById('nm-reset').onclick = () => {
+      FIELDS.forEach((f) => { del(f[0]); document.getElementById(f[0]).value = f[2]; });
+      apply();
+    };
+    apply();
+
+    // ---------- Приклад вікна (нічого не зберігається) ----------
+    const pv = document.createElement('div');
+    pv.id = 'nm-preview';
+    pv.innerHTML = `
+      <div class="nm-box">
+        <div class="nm-head"><h3 class="nm-title">23 Жов10 2026 (приклад)</h3><button type="button" class="nm-close">&times;</button></div>
+        <textarea placeholder="Введіть ваш текст тут..."></textarea>
+        <button type="button" class="nm-save">Закрити приклад (нічого не зберігається)</button>
+      </div>`;
+    document.body.appendChild(pv);
+    const closePv = () => pv.classList.remove('open');
+    document.getElementById('nm-show').onclick = () => { pv.classList.add('open'); pv.querySelector('textarea').focus(); };
+    pv.querySelector('.nm-close').onclick = closePv;
+    pv.querySelector('.nm-save').onclick = closePv;
+    pv.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePv(); });
+  });
+})();
+</script>
+
 </html>
