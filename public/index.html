@@ -3284,4 +3284,892 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<!-- ===== БЛОК 9/12: ПЛАНУВАЛЬНИК (клітинки по 30 хв) У ВІКНАХ НОТАТОК ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (window.__plPopupInit) return;
+    window.__plPopupInit = true;
+
+    const KEY = 'calendar_planner';
+    const MONTHS = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const dateKey = (d) => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    const keyLabel = (k) => { const p = k.split('-').map(Number); return pad(p[2]) + '.' + pad(p[1] + 1) + '.' + p[0]; };
+
+    // ---------- Дані: ключ дати такий самий, як у нотатках (РІК-МІСЯЦЬ(0-11)-ДЕНЬ); слот 0..47 = 00:00..23:30 ----------
+    let raw = null, data = {};
+    const getPlan = () => {
+      const r = ls.get(KEY) || '';
+      if (r !== raw) { raw = r; try { data = JSON.parse(r || '{}') || {}; } catch (e) { data = {}; } }
+      return data;
+    };
+    const savePlan = (obj) => {
+      const s = JSON.stringify(obj);
+      ls.set(KEY, s); raw = s; data = obj;
+      window.dispatchEvent(new Event('pl:changed'));
+    };
+
+    // ---------- Стилі ----------
+    const st = document.createElement('style');
+    st.textContent = `
+      .pl-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 0 0 10px 0; }
+      .pl-b { padding: 8px 14px; border: 1px solid #bbb; border-radius: 6px; cursor: pointer; font-weight: 700;
+        font-size: 1rem; font-family: inherit; background: var(--pl-btn-bg, #f3f2f1); color: var(--pl-btn-txt, #323130); }
+      .pl-b.act { background: var(--pl-btn-act-bg, #6264a7); color: var(--pl-btn-act-txt, #ffffff); border-color: var(--pl-btn-act-bg, #6264a7); }
+      .pl-b:disabled { opacity: .4; cursor: default; }
+      .pl-date { font-weight: 800; margin-left: 6px; display: none; }
+      .pl-hint { margin-left: auto; font-size: .8rem; opacity: .6; }
+      .pl-plan { display: none; flex: 1 1 auto; min-height: 0; overflow-y: auto; position: relative;
+        border: 1px solid var(--pl-in-brd, #767676); border-radius: 4px; background: var(--pl-in-bg, #ffffff); }
+      #day-modal[data-pl-mode="plan"] .pl-plan, #mw-note-modal[data-pl-mode="plan"] .pl-plan { display: block; }
+      #day-modal[data-pl-mode="plan"] .pl-date, #mw-note-modal[data-pl-mode="plan"] .pl-date { display: inline; }
+      #day-modal[data-pl-mode="plan"] #day-note-text, #mw-note-modal[data-pl-mode="plan"] textarea { display: none !important; }
+      .pl-row { display: flex; align-items: center; gap: 10px; padding: 2px 8px; border-bottom: 1px solid rgba(128,128,128,.25); }
+      .pl-row.hr { border-top: 2px solid rgba(128,128,128,.35); }
+      .pl-row.filled { background: var(--pl-fill-bg, #fff59d); }
+      .pl-row.now { box-shadow: inset 6px 0 0 var(--pl-now-c, #e53935); }
+      .pl-t { width: 4.2em; font-weight: 800; font-size: 1.1rem; font-variant-numeric: tabular-nums; color: var(--pl-time-c, #6264a7); }
+      .pl-in { flex: 1; min-width: 0; padding: 8px 10px; font-size: 1.15rem; box-sizing: border-box;
+        border: 1px solid var(--pl-in-brd, #767676); border-radius: 4px;
+        background: var(--pl-in-bg, #ffffff); color: var(--pl-in-txt, #000000); }`;
+    document.head.appendChild(st);
+
+    // ---------- Яку дату відкрито: з кліку по шапці тижня або з заголовка вікна ----------
+    const t0 = new Date(), dow = t0.getDay();
+    const monday = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + (dow === 0 ? -6 : 1 - dow));
+    let hdrPick = null;
+    window.addEventListener('click', (e) => {
+      const c = e.target.closest && e.target.closest('#hdr-row .hdr-cell');
+      if (!c) return;
+      const i = Array.prototype.indexOf.call(c.parentNode.children, c) - 1;
+      if (i < 0 || i > 6) return;
+      hdrPick = { key: dateKey(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i)), ts: Date.now() };
+    }, true);
+    const parseTitle = (t) => {
+      t = (t || '').trim();
+      let m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})/);
+      if (m) return (+m[3]) + '-' + (+m[2] - 1) + '-' + (+m[1]);
+      m = t.match(/^(\d{1,2})\s+(\S+)\s+(\d{4})/);
+      if (m) { const mi = MONTHS.indexOf(m[2]); if (mi >= 0) return (+m[3]) + '-' + mi + '-' + (+m[1]); }
+      return null;
+    };
+
+    // ---------- Підключення до вікон нотаток ----------
+    const CFGS = [
+      { modal: '#day-modal', head: '.cal-modal-header', title: '#day-modal-title', save: '#day-note-save', week: true },
+      { modal: '#mw-note-modal', head: '.mw-nm-head', title: '.mw-nm-title', save: '.mw-nm-save', week: false }
+    ];
+
+    function attach(cfg) {
+      const modal = document.querySelector(cfg.modal);
+      if (!modal) return false;
+      if (modal.dataset.plReady) return true;
+      const head = modal.querySelector(cfg.head), titleEl = modal.querySelector(cfg.title), saveBtn = modal.querySelector(cfg.save);
+      if (!head || !titleEl || !saveBtn) return false;
+      modal.dataset.plReady = '1';
+
+      const bar = document.createElement('div');
+      bar.className = 'pl-bar';
+      bar.innerHTML = '<button type="button" class="pl-b" data-m="text">📝 Текст</button>' +
+        '<button type="button" class="pl-b" data-m="plan">🗓 Планувальник (по 30 хв)</button>' +
+        '<span class="pl-date"></span><span class="pl-hint">зберігається автоматично</span>';
+      const plan = document.createElement('div');
+      plan.className = 'pl-plan';
+      head.after(bar);
+      bar.after(plan);
+      const planBtn = bar.querySelector('[data-m="plan"]');
+      const dateEl = bar.querySelector('.pl-date');
+
+      let key = null, timer = null, mode = 'text', builtKey = null;
+
+      const persist = () => {
+        if (!key || builtKey !== key) return;
+        const all = getPlan(), o = {};
+        plan.querySelectorAll('.pl-in').forEach((i) => { const v = i.value.trim(); if (v) o[i.dataset.slot] = v; });
+        if (Object.keys(o).length) all[key] = o; else delete all[key];
+        savePlan(all);
+      };
+      const flush = () => { if (timer) { clearTimeout(timer); timer = null; persist(); } };
+
+      const build = () => {
+        const day = getPlan()[key] || {};
+        const n = new Date();
+        const isToday = key === dateKey(n);
+        const nowSlot = n.getHours() * 2 + (n.getMinutes() >= 30 ? 1 : 0);
+        let h = '';
+        for (let s = 0; s < 48; s++) {
+          const v = day[s] || '';
+          h += '<div class="pl-row' + (s % 2 ? '' : ' hr') + (v ? ' filled' : '') + (isToday && s === nowSlot ? ' now' : '') + '">' +
+               '<span class="pl-t">' + pad(s >> 1) + ':' + (s % 2 ? '30' : '00') + '</span>' +
+               '<input type="text" class="pl-in" data-slot="' + s + '" value="' + esc(v) + '" placeholder="..." autocomplete="off"></div>';
+        }
+        plan.innerHTML = h;
+        builtKey = key;
+        const target = plan.querySelector('.pl-in[data-slot="' + (isToday ? Math.max(0, nowSlot - 2) : 16) + '"]');
+        plan.scrollTop = target ? target.parentNode.offsetTop : 0;
+      };
+
+      const setMode = (m) => {
+        if (m === 'plan' && !key) m = 'text';
+        mode = m;
+        modal.dataset.plMode = m;
+        bar.querySelectorAll('.pl-b').forEach((b) => b.classList.toggle('act', b.dataset.m === m));
+        if (m === 'plan') build(); else flush();
+      };
+
+      bar.addEventListener('click', (e) => {
+        const b = e.target.closest('.pl-b');
+        if (!b || b.disabled) return;
+        ls.set('pl-mode', b.dataset.m);
+        setMode(b.dataset.m);
+      });
+
+      plan.addEventListener('input', (e) => {
+        const i = e.target.closest('.pl-in');
+        if (!i) return;
+        i.parentNode.classList.toggle('filled', i.value.trim() !== '');
+        clearTimeout(timer);
+        timer = setTimeout(() => { timer = null; persist(); }, 300);
+      });
+      plan.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (e.ctrlKey || e.metaKey) {            // Ctrl+Enter: зберегти і закрити (без перезавантаження)
+          e.stopPropagation();
+          if (timer) { clearTimeout(timer); timer = null; }
+          persist();
+          modal.classList.remove('open');
+          return;
+        }
+        const next = e.target.closest('.pl-row') && e.target.closest('.pl-row').nextElementSibling;
+        const inp = next && next.querySelector('.pl-in');
+        if (inp) inp.focus();
+      });
+
+      // У режимі планувальника кнопка «Зберегти» тільки зберігає планувальник і закриває вікно
+      window.addEventListener('click', (e) => {
+        if (mode !== 'plan' || !modal.classList.contains('open')) return;
+        const b = e.target.closest && e.target.closest(cfg.save);
+        if (!b || !modal.contains(b)) return;
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        if (timer) { clearTimeout(timer); timer = null; }
+        persist();
+        window.customActiveWeekDate = null;
+        modal.classList.remove('open');
+      }, true);
+
+      window.addEventListener('pagehide', flush);
+
+      const onOpen = () => {
+        key = (cfg.week && hdrPick && Date.now() - hdrPick.ts < 800) ? hdrPick.key : parseTitle(titleEl.textContent);
+        planBtn.disabled = !key;
+        dateEl.textContent = key ? keyLabel(key) : '';
+        setMode(ls.get('pl-mode') === 'plan' ? 'plan' : 'text');
+      };
+      const onClose = () => { flush(); plan.innerHTML = ''; builtKey = null; key = null; };
+
+      let wasOpen = modal.classList.contains('open');
+      new MutationObserver(() => {
+        const open = modal.classList.contains('open');
+        if (open && !wasOpen) onOpen(); else if (!open && wasOpen) onClose();
+        wasOpen = open;
+      }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+      if (wasOpen) onOpen();
+      return true;
+    }
+
+    const tryAll = () => CFGS.map(attach).every(Boolean);
+    if (!tryAll()) {
+      const mo = new MutationObserver(() => { if (tryAll()) mo.disconnect(); });
+      mo.observe(document.body, { childList: true });
+      setTimeout(() => mo.disconnect(), 30000);
+    }
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 10/12: ПОЗНАЧКИ ПЛАНУВАЛЬНИКА В ТАБЛИЦІ ТИЖНЯ, ШАПЦІ ДНІВ, ВІДЖЕТІ МІСЯЦЯ ТА ВІКНІ МІСЯЦІВ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (window.__plMarksInit) return;
+    window.__plMarksInit = true;
+
+    const KEY = 'calendar_planner';
+    const MONTHS = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
+    const lsGet = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const dateKey = (d) => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+    let raw = null, data = {};
+    const getPlan = () => {
+      const r = lsGet(KEY) || '';
+      if (r !== raw) { raw = r; try { data = JSON.parse(r || '{}') || {}; } catch (e) { data = {}; } }
+      return data;
+    };
+
+    const st = document.createElement('style');
+    st.textContent = `
+      /* позначки заповнених півгодин у клітинках тижня */
+      .day-column .cell .pl-h { position: absolute; left: 0; right: 0; height: 50%; box-sizing: border-box; overflow: hidden;
+        white-space: nowrap; text-overflow: ellipsis; font-size: 12px; font-weight: 700; line-height: 1.3; padding: 2px 4px 0 8px;
+        border-left: 6px solid var(--pl-mark-c, #e91e63); background: var(--pl-mark-bg, #ffd54f); color: var(--pl-mark-txt, #000000);
+        opacity: .92; pointer-events: none; }
+      .day-column .cell .pl-h1 { top: 0; }
+      .day-column .cell .pl-h2 { top: 50%; }
+      .cell.now-cell::before { z-index: 3; }
+      /* значок з кількістю подій у шапці дня */
+      .grid-hdr .hdr-cell { position: relative; }
+      .grid-hdr .hdr-cell[data-pl]::after { content: "🗓 " attr(data-pl); position: absolute; right: 4px; top: 3px; padding: 1px 6px;
+        border-radius: 10px; font-size: 14px; font-weight: 800; line-height: 1.3; pointer-events: none;
+        background: var(--pl-hb-bg, #e91e63); color: var(--pl-hb-txt, #ffffff); }
+      /* крапка на днях у віджеті місяця та у вікні місяців */
+      .pl-has { position: relative !important; }
+      .pl-has::after { content: ''; position: absolute; right: 3px; top: 3px; width: 8px; height: 8px; border-radius: 50%;
+        background: var(--pl-mark-c, #e91e63); box-shadow: 0 0 0 1px #ffffff; pointer-events: none; }`;
+    document.head.appendChild(st);
+
+    // тиждень такий самий, як у головному додатку (понеділок-неділя на момент завантаження)
+    const t0 = new Date(), dow = t0.getDay();
+    const monday = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + (dow === 0 ? -6 : 1 - dow));
+
+    function half(cell, cls, txt) {
+      let el = null;
+      for (const c of cell.children) { if (c.classList.contains(cls)) { el = c; break; } }
+      if (!txt) { if (el) el.remove(); return; }
+      if (!el) { el = document.createElement('div'); el.className = 'pl-h ' + cls; cell.appendChild(el); }
+      if (el.textContent !== txt) { el.textContent = txt; el.title = txt; }
+    }
+
+    function paintGrid() {
+      const cols = document.querySelectorAll('#grid-main .day-column');
+      if (cols.length < 7) return false;
+      const plan = getPlan();
+      const hdr = Array.from(document.querySelectorAll('#hdr-row .hdr-cell')).slice(1);
+      cols.forEach((col, i) => {
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+        const day = plan[dateKey(d)] || {};
+        for (let h = 0; h < 24; h++) {
+          const cell = col.children[h];
+          if (!cell) continue;
+          half(cell, 'pl-h1', day[2 * h]);
+          half(cell, 'pl-h2', day[2 * h + 1]);
+        }
+        const cnt = Object.keys(day).filter((k) => String(day[k]).trim() !== '').length;
+        const hc = hdr[i];
+        if (hc) { if (cnt) hc.dataset.pl = cnt; else delete hc.dataset.pl; }
+      });
+      return true;
+    }
+
+    // крапки у віджеті місяця та у вікні місяців (поточний місяць береться із заголовка)
+    const watchers = [];
+    function markContainer(container, titleEl, btnSel) {
+      const m = titleEl.textContent.trim().match(/^(\S+)\s+(\d{4})$/);
+      if (!m) return;
+      const mi = MONTHS.indexOf(m[1]);
+      if (mi < 0) return;
+      const plan = getPlan();
+      container.querySelectorAll(btnSel).forEach((b) => {
+        const day = plan[m[2] + '-' + mi + '-' + b.dataset.day];
+        b.classList.toggle('pl-has', !!day && Object.keys(day).length > 0);
+      });
+    }
+    function watch(contSel, titleSel, btnSel) {
+      const attachW = () => {
+        const c = document.querySelector(contSel), t = document.querySelector(titleSel);
+        if (!c || !t) return false;
+        const run = () => markContainer(c, t, btnSel);
+        new MutationObserver(run).observe(c, { childList: true });
+        watchers.push(run);
+        run();
+        return true;
+      };
+      if (attachW()) return;
+      let n = 0;
+      const iv = setInterval(() => { if (attachW() || ++n > 100) clearInterval(iv); }, 300);
+    }
+    watch('#mw-widget .mw-grid', '#mw-widget .mw-title', '.mw-day[data-day]');
+    watch('#days-container', '#month-modal-title', '.cal-btn[data-day]');
+
+    const repaint = () => { paintGrid(); watchers.forEach((f) => f()); };
+    window.addEventListener('pl:changed', repaint);
+    window.addEventListener('storage', repaint);
+
+    if (!paintGrid()) {
+      let n = 0;
+      const iv = setInterval(() => { if (paintGrid() || ++n > 100) clearInterval(iv); }, 300);
+    }
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 11/12: РУХОМИЙ ВІДЖЕТ НАЙБЛИЖЧОЇ ПОДІЇ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('pl-next')) return;
+    const KEY = 'calendar_planner';
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    const root = document.documentElement;
+
+    const st = document.createElement('style');
+    st.textContent = `
+      #pl-next { position: fixed; z-index: 955; width: var(--pl-nw-w, 260px); max-width: calc(100vw - 10px);
+        font-size: calc(var(--pl-nw-w, 260px) / 17); box-sizing: border-box; padding: .6em .8em; border-radius: .7em;
+        border: 2px solid var(--pl-nw-brd, #6264a7); background: var(--pl-nw-bg, #ffffff); color: var(--pl-nw-txt, #323130);
+        box-shadow: 0 .5em 1.4em rgba(0,0,0,.28); cursor: move; touch-action: none; user-select: none; -webkit-user-select: none;
+        font-family: 'Segoe UI', sans-serif; }
+      html[data-pl-nw="hide"] #pl-next { display: none !important; }
+      #pl-next[data-state="soon"] { background: var(--pl-nw-soon-bg, #ff9800); color: var(--pl-nw-soon-txt, #000000); }
+      #pl-next[data-state="now"] { background: var(--pl-nw-now-bg, #e53935); color: var(--pl-nw-now-txt, #ffffff); }
+      #pl-next .pl-nw-h { font-size: .75em; font-weight: 700; opacity: .85; text-transform: uppercase; letter-spacing: .04em; }
+      #pl-next .pl-nw-time { font-size: 1.9em; font-weight: 900; line-height: 1.1; }
+      #pl-next .pl-nw-time small { font-size: .4em; font-weight: 700; margin-left: .4em; opacity: .85; }
+      #pl-next .pl-nw-txt { font-weight: 700; margin-top: .15em; word-break: break-word; max-height: 3.6em; overflow: hidden; }
+      #pl-next .pl-nw-cd { font-size: .95em; font-weight: 800; margin-top: .25em; }`;
+    document.head.appendChild(st);
+
+    const el = document.createElement('div');
+    el.id = 'pl-next';
+    el.innerHTML = '<div class="pl-nw-h"></div><div class="pl-nw-time"></div><div class="pl-nw-txt"></div><div class="pl-nw-cd"></div>';
+    document.body.appendChild(el);
+    const eH = el.querySelector('.pl-nw-h'), eT = el.querySelector('.pl-nw-time'),
+          eX = el.querySelector('.pl-nw-txt'), eC = el.querySelector('.pl-nw-cd');
+
+    // ---------- Список подій з планувальника (сусідні слоти з однаковим текстом зливаються в одну подію) ----------
+    let cacheRaw = null, events = [];
+    function load() {
+      const r = ls.get(KEY) || '';
+      if (r === cacheRaw) return;
+      cacheRaw = r;
+      let all = {};
+      try { all = JSON.parse(r || '{}') || {}; } catch (e) {}
+      const list = [];
+      Object.keys(all).forEach((k) => {
+        const p = k.split('-').map(Number);
+        if (p.length !== 3 || p.some(isNaN)) return;
+        const day = all[k] || {};
+        Object.keys(day).forEach((s) => {
+          const si = +s, txt = String(day[s] || '').trim();
+          if (!txt || isNaN(si) || si < 0 || si > 47) return;
+          const start = new Date(p[0], p[1], p[2], 0, si * 30).getTime();
+          list.push({ start: start, end: start + 1800000, text: txt });
+        });
+      });
+      list.sort((a, b) => a.start - b.start);
+      events = [];
+      list.forEach((e) => {
+        const l = events[events.length - 1];
+        if (l && l.end === e.start && l.text === e.text) l.end = e.end; else events.push(e);
+      });
+    }
+
+    const fmtDur = (ms) => {
+      const s = Math.max(0, Math.ceil(ms / 1000));
+      const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+      if (h > 0) return h + ' г ' + m + ' хв';
+      if (m >= 5) return m + ' хв';
+      return m + ' хв ' + sec + ' с';
+    };
+    const hm = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+
+    // повертає затримку до наступного оновлення (мс)
+    function render() {
+      if (root.dataset.plNw === 'hide') return 15000;
+      load();
+      const t = Date.now();
+      const ev = events.find((e) => e.end > t);
+      if (!ev) {
+        el.dataset.state = 'idle';
+        eH.textContent = 'Найближчі події';
+        eT.textContent = '—';
+        eX.textContent = 'Подій немає';
+        eC.textContent = '';
+        return 30000;
+      }
+      const soonMs = (parseInt(ls.get('pl-soon'), 10) || 15) * 60000;
+      const ongoing = t >= ev.start;
+      const state = ongoing ? 'now' : (ev.start - t <= soonMs ? 'soon' : 'normal');
+      el.dataset.state = state;
+      eH.textContent = ongoing ? 'Триває зараз' : 'Наступна подія';
+      if (ongoing) {
+        eT.innerHTML = 'до ' + hm(ev.end);
+        eC.textContent = 'залишилось ' + fmtDur(ev.end - t);
+      } else {
+        const sd = new Date(ev.start), today0 = new Date();
+        today0.setHours(0, 0, 0, 0);
+        const dd = Math.round((new Date(sd.getFullYear(), sd.getMonth(), sd.getDate()) - today0) / 864e5);
+        const lbl = dd === 0 ? 'сьогодні' : (dd === 1 ? 'завтра' : pad(sd.getDate()) + '.' + pad(sd.getMonth() + 1));
+        eT.innerHTML = hm(ev.start) + '<small>' + lbl + '</small>';
+        eC.textContent = 'через ' + fmtDur(ev.start - t);
+      }
+      eX.textContent = ev.text;
+      return (ongoing || ev.start - t < 3600000) ? 1000 : 15000;
+    }
+
+    let timer = null;
+    function loop() {
+      clearTimeout(timer);
+      const d = render();
+      timer = setTimeout(loop, d);
+    }
+    window.addEventListener('pl:changed', loop);
+    window.addEventListener('pl:settings', loop);
+    window.addEventListener('storage', loop);
+
+    // ---------- Перетягування, позиція зберігається ----------
+    const L = ls.get('pl-nw-left'), T = ls.get('pl-nw-top');
+    if (L && T) { el.style.left = L; el.style.top = T; }
+    else { el.style.left = Math.max(10, Math.round(window.innerWidth * 0.38)) + 'px'; el.style.top = '100px'; }
+    const keepInView = () => {
+      const r = el.getBoundingClientRect();
+      if (r.right < 30 || r.left > innerWidth - 30 || r.top > innerHeight - 30 || r.bottom < 30) {
+        el.style.left = '20px'; el.style.top = '100px'; ls.del('pl-nw-left'); ls.del('pl-nw-top');
+      }
+    };
+    requestAnimationFrame(keepInView);
+    window.addEventListener('resize', keepInView);
+    window.addEventListener('pl:reset-pos', () => { el.style.left = '20px'; el.style.top = '100px'; ls.del('pl-nw-left'); ls.del('pl-nw-top'); });
+
+    let drag = null;
+    el.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      const r = el.getBoundingClientRect();
+      drag = { ox: e.clientX - r.left, oy: e.clientY - r.top };
+      try { el.setPointerCapture(e.pointerId); } catch (err) {}
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      el.style.left = Math.max(0, Math.min(innerWidth - el.offsetWidth, e.clientX - drag.ox)) + 'px';
+      el.style.top = Math.max(0, Math.min(innerHeight - el.offsetHeight, e.clientY - drag.oy)) + 'px';
+    });
+    const end = () => { if (!drag) return; drag = null; ls.set('pl-nw-left', el.style.left); ls.set('pl-nw-top', el.style.top); };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+
+    loop();
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 12/12: НАЛАШТУВАННЯ ПЛАНУВАЛЬНИКА (кольори, розміри, показ/сховати) ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('pl-settings-box')) return;
+    const root = document.documentElement;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const del = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+    const C = (id, label, def) => ({ id: id, label: label, type: 'color', def: def });
+    const R = (id, label, def, min, max, step, unit) => ({ id: id, label: label, type: 'range', def: def, min: min, max: max, step: step, unit: unit || '' });
+    const GROUPS = [
+      { title: '🔔 Віджет найближчої події', fields: [
+        { id: 'pl-nw-show', label: 'Віджет на екрані', type: 'select', def: 'show', opts: [['show', 'Показувати'], ['hide', 'Сховати']] },
+        R('pl-nw-w', 'Розмір (ширина, px)', '260', 160, 600, 5, 'px'),
+        R('pl-soon', 'Скоро: змінити колір за (хв)', '15', 1, 180, 1),
+        C('pl-nw-bg', 'Фон (звичайний)', '#ffffff'),
+        C('pl-nw-txt', 'Текст (звичайний)', '#323130'),
+        C('pl-nw-brd', 'Рамка', '#6264a7'),
+        C('pl-nw-soon-bg', 'Фон, коли подія скоро', '#ff9800'),
+        C('pl-nw-soon-txt', 'Текст, коли подія скоро', '#000000'),
+        C('pl-nw-now-bg', 'Фон, коли подія триває', '#e53935'),
+        C('pl-nw-now-txt', 'Текст, коли подія триває', '#ffffff')
+      ] },
+      { title: '📌 Позначки в таблиці та календарях', fields: [
+        C('pl-mark-c', 'Смужка/крапка позначки', '#e91e63'),
+        C('pl-mark-bg', 'Фон позначки в клітинці', '#ffd54f'),
+        C('pl-mark-txt', 'Текст позначки в клітинці', '#000000'),
+        C('pl-hb-bg', 'Значок у шапці дня (фон)', '#e91e63'),
+        C('pl-hb-txt', 'Значок у шапці дня (текст)', '#ffffff')
+      ] },
+      { title: '🗓 Вікно планувальника', fields: [
+        C('pl-btn-bg', 'Кнопка режиму (фон)', '#f3f2f1'),
+        C('pl-btn-txt', 'Кнопка режиму (текст)', '#323130'),
+        C('pl-btn-act-bg', 'Активна кнопка (фон)', '#6264a7'),
+        C('pl-btn-act-txt', 'Активна кнопка (текст)', '#ffffff'),
+        C('pl-fill-bg', 'Фон заповненої півгодини', '#fff59d'),
+        C('pl-time-c', 'Колір часу (08:00)', '#6264a7'),
+        C('pl-now-c', 'Мітка поточної півгодини', '#e53935'),
+        C('pl-in-bg', 'Фон поля', '#ffffff'),
+        C('pl-in-txt', 'Текст у полі', '#000000'),
+        C('pl-in-brd', 'Рамка поля', '#767676')
+      ] }
+    ];
+    const FIELDS = [].concat.apply([], GROUPS.map((g) => g.fields));
+
+    const rowHtml = (f) => {
+      let ctl;
+      if (f.type === 'select') ctl = '<select id="' + f.id + '" style="padding:4px; font-weight:bold;">' + f.opts.map((o) => '<option value="' + o[0] + '">' + o[1] + '</option>').join('') + '</select>';
+      else if (f.type === 'range') ctl = '<input type="range" id="' + f.id + '" min="' + f.min + '" max="' + f.max + '" step="' + f.step + '">';
+      else ctl = '<input type="color" id="' + f.id + '">';
+      return '<div class="row">' + f.label + ' ' + ctl + '</div>';
+    };
+
+    const box = document.createElement('div');
+    box.id = 'pl-settings-box';
+    box.style.cssText = 'border-top:2px solid #6264a7; padding-top:12px; margin:15px 0; font-family:sans-serif;';
+    box.innerHTML = '<h4 style="margin:0 0 6px 0;">🗓 Планувальник (події по 30 хв)</h4>' +
+      GROUPS.map((g) => '<details style="margin:6px 0;"><summary style="cursor:pointer; font-weight:bold; padding:4px 0;">' + g.title + '</summary>' +
+        g.fields.map(rowHtml).join('') + '</details>').join('') +
+      '<div class="row"><button type="button" id="pl-reset-pos" style="width:100%; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">Повернути віджет події на місце</button></div>' +
+      '<div class="row"><button type="button" id="pl-reset-all" style="width:100%; padding:6px; cursor:pointer; background:#e74c3c; color:#fff; border:none; border-radius:4px; font-weight:bold;">Скинути кольори й розміри планувальника</button></div>';
+    const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+    if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+
+    const el = (id) => document.getElementById(id);
+    FIELDS.forEach((f) => { el(f.id).value = get(f.id) || f.def; });
+
+    function apply() {
+      FIELDS.forEach((f) => {
+        const v = el(f.id).value;
+        if (f.id === 'pl-nw-show') root.dataset.plNw = v;
+        else root.style.setProperty('--' + f.id, v + (f.unit || ''));
+      });
+      window.dispatchEvent(new Event('pl:settings'));
+    }
+    box.addEventListener('input', (e) => {
+      const id = e.target && e.target.id;
+      if (!FIELDS.some((f) => f.id === id)) return;
+      set(id, e.target.value);
+      apply();
+    });
+    box.addEventListener('change', (e) => {
+      const id = e.target && e.target.id;
+      if (!FIELDS.some((f) => f.id === id)) return;
+      set(id, e.target.value);
+      apply();
+    });
+    el('pl-reset-pos').onclick = () => window.dispatchEvent(new Event('pl:reset-pos'));
+    el('pl-reset-all').onclick = () => {
+      FIELDS.forEach((f) => { del(f.id); el(f.id).value = f.def; });
+      apply();
+    };
+    apply();
+  });
+})();
+</script>
+
+
+
+<!-- ALARM NAVIGATION + RESET ALL THREE ALARMS; no display changes -->
+<style id="alarm-spacing-only">
+  #master-widget #alarm-time-btn,
+  #master-widget button[id^="alarm"][id$="-time-btn"] {
+    margin-top: 0 !important;
+    margin-bottom: 0 !important;
+  }
+</style>
+
+<script id="alarm-navigation-and-reset">
+(() => {
+  const $ = id => document.getElementById(id);
+  const panel = $('panel');
+  const widget = $('master-widget');
+
+  if (!panel || !widget) return;
+
+  function openSettings(number) {
+    const input = $(number === 1 ? 'alarm-in' : `alarm${number}-in`);
+    if (!input) {
+      console.error('Cannot find settings for alarm', number);
+      return;
+    }
+
+    panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+
+    requestAnimationFrame(() => {
+      // Scroll the panel itself to the selected alarm's input.
+      let ancestor = input.parentElement;
+      while (ancestor && ancestor !== panel) {
+        if (ancestor.scrollHeight > ancestor.clientHeight + 2 &&
+            getComputedStyle(ancestor).overflowY !== 'visible') break;
+        ancestor = ancestor.parentElement;
+      }
+
+      if (ancestor && ancestor !== panel) {
+        ancestor.scrollTop +=
+          input.getBoundingClientRect().top -
+          ancestor.getBoundingClientRect().top - 16;
+      } else {
+        panel.scrollTop +=
+          input.getBoundingClientRect().top -
+          panel.getBoundingClientRect().top - 16;
+      }
+
+      input.focus({ preventScroll: true });
+    });
+  }
+
+  // Attach directly to each button, including buttons created later.
+  function wireButtons() {
+    widget.querySelectorAll('button[id^="alarm"][id$="-time-btn"]')
+      .forEach(button => {
+        const match = button.id.match(/^alarm(\d*)-time-btn$/);
+        if (!match || button.dataset.navResetFix === '1') return;
+
+        button.dataset.navResetFix = '1';
+        const number = match[1] ? Number(match[1]) : 1;
+
+        button.addEventListener('click', event => {
+          event.preventDefault();
+          event.stopImmediatePropagation();
+          openSettings(number);
+        }, true);
+      });
+  }
+
+  wireButtons();
+  new MutationObserver(wireButtons).observe(widget, { childList: true });
+
+  // Reset the saved state and stop active audio for alarms 1, 2, and 3.
+  function resetAllAlarms() {
+    // Alarm 1
+    try {
+      const input = $('alarm-in');
+      if (input) {
+        input.value = '';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+
+      [
+        'alarm-in', 'alarm-v', 'alarm-snz', 'alarm-start-moment',
+        'alarm-triggered-moment', 'alarm-abs-start'
+      ].forEach(key => localStorage.removeItem(key));
+
+      if (typeof window.clearAllAlarmState === 'function') {
+        window.clearAllAlarmState();
+      }
+    } catch (e) {
+      console.warn('Alarm 1 reset:', e);
+    }
+
+    // Alarm 2 uses the reset function already provided by the app.
+    try {
+      if (typeof window.clearAllAlarm2State === 'function') {
+        window.clearAllAlarm2State();
+      }
+      if (typeof window.close2 === 'function') window.close2();
+      if (window.audio2) {
+        window.audio2.pause();
+        window.audio2.currentTime = 0;
+      }
+      [
+        'alarm2-v', 'alarm2-snz', 'alarm2-start-moment',
+        'alarm2-triggered-moment', 'alarm2-abs-start'
+      ].forEach(key => localStorage.removeItem(key));
+      const input = $('alarm2-in');
+      if (input) input.value = '';
+      if (typeof window.updateUI2 === 'function') window.updateUI2('', '');
+    } catch (e) {
+      console.warn('Alarm 2 reset:', e);
+    }
+
+    // Alarm 3 and any further dynamically created alarms.
+    for (let number = 3; number <= 20; number++) {
+      try {
+        const input = $(`alarm${number}-in`);
+        const audio = window[`audio${number}`];
+
+        if (audio) {
+          audio.pause();
+          audio.currentTime = 0;
+        }
+
+        if (typeof window[`close${number}`] === 'function') {
+          window[`close${number}`]();
+        }
+
+        if (typeof window[`clearAllAlarm${number}State`] === 'function') {
+          window[`clearAllAlarm${number}State`]();
+        }
+
+        [
+          `alarm${number}-v`,
+          `alarm${number}-snz`,
+          `alarm${number}-start-moment`,
+          `alarm${number}-triggered-moment`,
+          `alarm${number}-abs-start`
+        ].forEach(key => localStorage.removeItem(key));
+
+        if (input) {
+          input.value = '';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        if (typeof window[`updateUI${number}`] === 'function') {
+          window[`updateUI${number}`]('', '');
+        }
+
+        if (window[`modal${number}`]) {
+          window[`modal${number}`].style.setProperty(
+            'display', 'none', 'important'
+          );
+          window[`modal${number}`].classList.remove('open');
+        }
+      } catch (e) {
+        console.warn(`Alarm ${number} reset:`, e);
+      }
+    }
+
+    // Close any visible alarm popup for alarm 1.
+    const modal = $('alarm-modal');
+    if (modal) modal.classList.remove('open');
+  }
+
+  // Find the existing "Скинути" button in the settings panel.
+  const resetButton = Array.from(panel.querySelectorAll('button'))
+    .find(button => button.textContent.toLowerCase().includes('скинути'));
+
+  if (resetButton && resetButton.dataset.resetAllAlarmsFix !== '1') {
+    resetButton.dataset.resetAllAlarmsFix = '1';
+    resetButton.addEventListener('click', resetAllAlarms, true);
+  }
+})();
+</script>
+
+
+
+<!-- Delete previous year's planner events -->
+<script>
+(() => {
+  const BUTTON_ID = 'clear-prev-planner-year-btn';
+
+  function install() {
+    const panel = document.getElementById('panel');
+
+    if (!panel) return false;
+    if (document.getElementById(BUTTON_ID)) return true;
+
+    const year = new Date().getFullYear() - 1;
+    const section = document.createElement('div');
+
+    section.style.cssText =
+      'border-top:2px solid #e74c3c;padding:10px 0;margin-top:15px;font-family:sans-serif;';
+
+    const heading = document.createElement('div');
+    heading.textContent =
+      '🗓 Очищення старих подій планувальника';
+    heading.style.cssText =
+      'font-weight:bold;margin-bottom:8px;';
+
+    const button = document.createElement('button');
+    button.id = BUTTON_ID;
+    button.type = 'button';
+    button.textContent =
+      'Видалити події планувальника за ' + year + ' рік';
+    button.style.cssText =
+      'width:100%;padding:8px;background:#e74c3c;color:white;border:0;border-radius:4px;font-weight:bold;cursor:pointer;';
+
+    button.addEventListener('click', () => {
+      let data;
+
+      try {
+        data = JSON.parse(
+          localStorage.getItem('calendar_planner') || '{}'
+        );
+
+        if (!data || typeof data !== 'object' ||
+            Array.isArray(data)) {
+          throw new Error('Invalid planner data');
+        }
+      } catch (err) {
+        alert('Не вдалося прочитати планувальник. Нічого не видалено.');
+        return;
+      }
+
+      const prefix = year + '-';
+      const keys = Object.keys(data).filter(key =>
+        key.startsWith(prefix)
+      );
+
+      const slots = keys.reduce((sum, key) => {
+        const day = data[key];
+        if (!day || typeof day !== 'object' ||
+            Array.isArray(day)) return sum;
+
+        return sum + Object.values(day).filter(value =>
+          typeof value === 'string' && value.trim() !== ''
+        ).length;
+      }, 0);
+
+      if (!confirm(
+        'Видалити події планувальника за ' + year + ' рік?\n' +
+        'Днів із записами: ' + keys.length + '\n' +
+        'Заповнених слотів: ' + slots + '\n\n' +
+        'Звичайні нотатки календаря та події інших років залишаться.'
+      )) return;
+
+      keys.forEach(key => delete data[key]);
+
+      try {
+        localStorage.setItem(
+          'calendar_planner',
+          JSON.stringify(data)
+        );
+      } catch (err) {
+        alert('Помилка збереження планувальника.');
+        return;
+      }
+
+      alert(
+        'Очищення завершено.\nРік: ' + year +
+        '\nДнів: ' + keys.length +
+        '\nЗаповнених слотів: ' + slots
+      );
+
+      location.reload();
+    });
+
+    section.appendChild(heading);
+    section.appendChild(button);
+
+    panel.appendChild(section);
+    return true;
+  }
+
+  function start() {
+    if (install()) return;
+
+    const observer = new MutationObserver(() => {
+      if (install()) observer.disconnect();
+    });
+
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, {
+      once: true
+    });
+  } else {
+    start();
+  }
+})();
+</script>
+
+
 </html>
