@@ -4985,4 +4985,490 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<!-- ===== БЛОК 19 (ОНОВЛЕНИЙ): МЕЛОДІЇ-НАГАДУВАННЯ ДЛЯ ПОДІЙ — «за N хв до» АБО «о хвилині ХХ всередині півгодини» ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (window.__paInit) return;
+    window.__paInit = true;
+
+    const PKEY = 'calendar_planner';             // події планувальника (текст півгодин)
+    const AKEY = 'calendar_planner_alarms';      // мелодії-нагадування: { "РІК-МІСЯЦЬ-ДЕНЬ": { "слот": хвилин_до_події } }
+    const FKEY = 'calendar_planner_fired';       // які нагадування вже програно (щоб не повторювались)
+    const DEFAULT_URL = 'https://huggingface.co/spaces/gchgch/clock/resolve/main/public/alarm.mp3';
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    const parse = (raw) => { try { return JSON.parse(raw || '{}') || {}; } catch (e) { return {}; } };
+    const clampMin = (v) => Math.max(0, Math.min(15, parseInt(v, 10) || 0));
+    const pad2 = (n) => String(n).padStart(2, '0');
+
+    // ---- PURE START ----
+    // значення: число 0..15 = "за N хв до початку"; рядок "iN" = "через N хв (0..30) після початку півгодини"
+    function parseAl(v) {
+      if (typeof v === 'string' && v.charAt(0) === 'i') return { mode: 'i', n: +v.slice(1) };
+      return { mode: 'b', n: +v };
+    }
+    function buildItems(plan, alarms) {
+      const items = [];
+      Object.keys(alarms).forEach((k) => {
+        const p = k.split('-').map(Number);
+        if (p.length !== 3 || p.some(isNaN)) return;
+        const day = plan[k] || {}, al = alarms[k] || {};
+        Object.keys(al).forEach((s) => {
+          const si = +s, x = parseAl(al[s]);
+          const txt = String(day[s] || '').trim();
+          if (!txt || isNaN(si) || si < 0 || si > 47 || isNaN(x.n)) return;
+          const start = new Date(p[0], p[1], p[2], 0, si * 30).getTime();
+          let at, lim;
+          if (x.mode === 'i') {
+            const n = Math.max(0, Math.min(30, Math.round(x.n)));
+            at = start + n * 60000;
+            lim = Math.max(start + 1800000, at + 60000);        // якщо час = кінець півгодини, вікно спрацювання 1 хв
+          } else {
+            const m = Math.max(0, Math.min(15, Math.round(x.n)));
+            at = start - m * 60000;
+            lim = start + 1800000;
+          }
+          items.push({ id: k + '|' + si + '|' + al[s], start: start, at: at, lim: lim, end: start + 1800000, text: txt });
+        });
+      });
+      items.sort((a, b) => a.at - b.at);
+      return items;
+    }
+    function dueItems(items, fired, now) {
+      return items.filter((it) => it.at <= now && it.lim > now && !fired[it.id]);
+    }
+    // ---- PURE END ----
+
+    // ---------- Стилі ----------
+    const st = document.createElement('style');
+    st.textContent = `
+      .pl-row .pa-bell { flex: none; padding: 4px 10px; font-size: 1.25rem; line-height: 1; border: 1px solid #bbb; border-radius: 6px;
+        background: #f3f2f1; cursor: pointer; }
+      .pl-row .pa-bell.on { background: var(--pa-bell, #ff9800); border-color: var(--pa-bell, #ff9800); }
+      .pl-row .pa-wrap { flex: none; display: flex; align-items: center; gap: 4px; visibility: hidden; font-weight: 700; color: var(--pl-time-c, #6264a7); }
+      .pl-row .pa-bell.on + .pa-wrap { visibility: visible; }
+      .pl-row .pa-min { width: 4.2em; padding: 6px; font-size: 1.1rem; border: 1px solid #767676; border-radius: 4px; }
+      .pl-row .pa-mode { padding: 6px; font-size: 1.05rem; border: 1px solid #767676; border-radius: 4px; font-weight: 700; }
+      .pl-row .pa-at { width: 3.2em; padding: 6px; font-size: 1.1rem; text-align: center; border: 1px solid #767676; border-radius: 4px; }
+      .pl-row .pa-wrap[data-mode="b"] .pa-at, .pl-row .pa-wrap[data-mode="b"] .pa-ui { display: none; }
+      .pl-row .pa-wrap[data-mode="i"] .pa-min, .pl-row .pa-wrap[data-mode="i"] .pa-ub { display: none; }
+      #pl-next .pl-nw-h { display: none !important; }
+      #pa-stopbtn { display: block; width: 100%; box-sizing: border-box; text-align: left; margin: 0 0 .15em; padding: .15em .3em;
+        border: 0; border-radius: .4em; background: transparent; color: inherit; font: 700 .75em 'Segoe UI', sans-serif;
+        text-transform: uppercase; letter-spacing: .04em; opacity: .9; cursor: default; }
+      #pa-stopbtn.play, #pa-stop { background: var(--pa-stop-bg, #d32f2f); color: var(--pa-stop-txt, #ffffff); cursor: pointer; opacity: 1;
+        box-shadow: 0 0 0 2px rgba(255,255,255,.75); }
+      #pa-stopbtn.play { font-size: .95em; padding: .35em .5em; text-align: center; }
+      #pa-stop { display: none; position: fixed; z-index: 20000; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 14px 26px;
+        border: 0; border-radius: 14px; font: 800 1.3rem 'Segoe UI', sans-serif; }`;
+    document.head.appendChild(st);
+
+    // ---------- Дані: нагадування ----------
+    let items = [], dirty = true, firedMem = parse(ls.get(FKEY));
+    const getAl = () => parse(ls.get(AKEY));
+    const saveAl = (o) => { ls.set(AKEY, JSON.stringify(o)); dirty = true; window.dispatchEvent(new Event('pa:changed')); };
+    const saveFired = () => {
+      const limit = Date.now() - 3 * 86400000;
+      Object.keys(firedMem).forEach((k) => { if (firedMem[k] < limit) delete firedMem[k]; });
+      ls.set(FKEY, JSON.stringify(firedMem));
+    };
+    const enabled = () => ls.get('pas-on') !== 'off';
+    const defMin = () => clampMin(ls.get('pas-defmin') === null ? 5 : ls.get('pas-defmin'));
+    let askedPersist = false;
+    const askPersist = () => {                          // просимо браузер не видаляти збережені дані
+      if (askedPersist) return;
+      askedPersist = true;
+      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {}); } catch (e) {}
+    };
+
+    // ---------- Мелодія (той самий підхід, що й у будильників: mp3 з IndexedDB, гучність і тривалість з налаштувань) ----------
+    const audio = new Audio();
+    audio.loop = true;
+    let ownUrl = null, playing = false, blocked = false, stopTimer = null;
+    const DB = 'PlannerAlarmDB', STORE = 'mp3';
+    function openDb(cb) {
+      try {
+        const r = indexedDB.open(DB, 1);
+        r.onupgradeneeded = (e) => e.target.result.createObjectStore(STORE);
+        r.onsuccess = (e) => cb(e.target.result);
+        r.onerror = () => cb(null);
+      } catch (e) { cb(null); }
+    }
+    function loadOwn() {
+      openDb((db) => {
+        if (!db) return;
+        const q = db.transaction(STORE).objectStore(STORE).get('track');
+        q.onsuccess = () => {
+          if (ownUrl) { URL.revokeObjectURL(ownUrl); ownUrl = null; }
+          if (q.result) ownUrl = URL.createObjectURL(q.result);
+        };
+      });
+    }
+    const volume = () => {
+      const v = document.getElementById('alarm-vol'), n = parseInt(v && v.value, 10);
+      return Math.max(0, Math.min(1, (isNaN(n) ? 35 : n) / 100));
+    };
+    const duration = () => {
+      const l = document.getElementById('alarm-len'), n = parseInt(l && l.value, 10);
+      return Math.max(5, Math.min(3600, isNaN(n) ? 300 : n));
+    };
+    function armStop() { clearTimeout(stopTimer); stopTimer = setTimeout(() => stopSound(), duration() * 1000); }
+    function startSound() {
+      stopSound(true);
+      audio.src = ownUrl || DEFAULT_URL;
+      audio.volume = volume();
+      const pr = audio.play();
+      const ok = () => { playing = true; blocked = false; armStop(); ui(); };
+      const bad = () => { playing = false; blocked = true; ui(); };       // браузер чекає на перший клік по сторінці
+      if (pr && pr.then) pr.then(ok, bad); else ok();
+    }
+    function stopSound(quiet) {
+      clearTimeout(stopTimer);
+      try { audio.pause(); audio.currentTime = 0; } catch (e) {}
+      playing = false; blocked = false;
+      if (!quiet) ui();
+    }
+    function retryBlocked() {
+      if (!blocked) return;
+      audio.volume = volume();
+      const pr = audio.play();
+      if (pr && pr.then) pr.then(() => { playing = true; blocked = false; armStop(); ui(); }, () => {});
+    }
+    // перший клік/клавіша на сторінці дозволяє звук; якщо мелодія була заблокована — запускаємо її
+    const onGesture = (e) => {
+      if (e.target && e.target.closest && e.target.closest('#pa-stopbtn, #pa-stop')) return;
+      retryBlocked();
+    };
+    document.addEventListener('pointerdown', onGesture, true);
+    document.addEventListener('keydown', onGesture, true);
+
+    // ---------- Планувальник: щосекунди (рідше, коли нагадувань поблизу немає) ----------
+    let timer = null;
+    function tick() {
+      if (dirty) { items = buildItems(parse(ls.get(PKEY)), getAl()); dirty = false; }
+      const now = Date.now();
+      let delay = 15000;
+      if (enabled()) {
+        const due = dueItems(items, firedMem, now);
+        if (due.length) {
+          due.forEach((it) => { firedMem[it.id] = now; });
+          saveFired();
+          startSound();
+        }
+        const nxt = items.find((it) => it.lim > now && !firedMem[it.id]);
+        if (nxt) delay = (nxt.at - now) > 120000 ? 5000 : 1000;
+      }
+      clearTimeout(timer);
+      timer = setTimeout(tick, delay);
+    }
+    const kick = () => { dirty = true; tick(); ui(); };
+    window.addEventListener('pl:changed', kick);
+    window.addEventListener('pa:changed', kick);
+    window.addEventListener('storage', kick);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) tick(); });
+
+    // ---------- Кнопка СТОП замість першого рядка у віджеті найближчої події ----------
+    const fb = document.createElement('button');
+    fb.id = 'pa-stop';
+    fb.type = 'button';
+    document.body.appendChild(fb);
+    let wbtn = null, whdr = null;
+
+    function nextInfo() {                                // чи має найближча подія мелодію (і за скільки хвилин)
+      const plan = parse(ls.get(PKEY)), al = getAl(), now = Date.now();
+      let best = null;
+      Object.keys(plan).forEach((k) => {
+        const p = k.split('-').map(Number);
+        if (p.length !== 3 || p.some(isNaN)) return;
+        const day = plan[k] || {};
+        Object.keys(day).forEach((s) => {
+          const si = +s;
+          if (String(day[s] || '').trim() === '' || isNaN(si) || si < 0 || si > 47) return;
+          const start = new Date(p[0], p[1], p[2], 0, si * 30).getTime();
+          if (start + 1800000 > now && (!best || start < best.start)) best = { start: start, key: k, slot: si };
+        });
+      });
+      if (!best) return null;
+      const day = plan[best.key], txt = String(day[best.slot]).trim();
+      let a = best.slot, b = best.slot;
+      while (a > 0 && String(day[a - 1] || '').trim() === txt) a--;
+      while (b < 47 && String(day[b + 1] || '').trim() === txt) b++;
+      const row = al[best.key] || {};
+      let label;
+      for (let s = a; s <= b; s++) {
+        if (row[s] === undefined) continue;
+        const x = parseAl(row[s]);
+        if (x.mode === 'b') label = ' −' + x.n + ' хв';
+        else { const tot = s * 30 + x.n; label = ' о ' + pad2(Math.floor(tot / 60) % 24) + ':' + pad2(tot % 60); }
+        break;
+      }
+      return { label: label };
+    }
+
+    function ui() {
+      let label, on = false;
+      if (playing) { label = '⏹ СТОП МЕЛОДІЇ'; on = true; }
+      else if (blocked) { label = '🔇 натисніть, щоб увімкнути звук'; on = true; }
+      else {
+        const inf = enabled() ? nextInfo() : null;
+        const h = (whdr && whdr.textContent) || 'Наступна подія';
+        label = (inf && inf.label !== undefined ? '🔔 ' : '') + h + (inf && inf.label !== undefined ? inf.label : '');
+      }
+      if (wbtn) { wbtn.textContent = label; wbtn.classList.toggle('play', on); }
+      const w = document.getElementById('pl-next');
+      const widgetShown = w && getComputedStyle(w).display !== 'none';
+      fb.textContent = label;
+      const modalOpen = !!document.querySelector('#day-modal.open, #mw-note-modal.open, #month-modal.open, #alarm-modal.open, #nm-preview.open');
+      fb.style.display = (on && (!widgetShown || modalOpen)) ? 'block' : 'none';
+    }
+    const press = (e) => {
+      e.stopPropagation();
+      if (playing) stopSound(); else if (blocked) retryBlocked();
+    };
+    fb.addEventListener('click', press);
+    document.addEventListener('click', () => { if (playing || blocked) setTimeout(ui, 60); }, true);
+
+    function initWidget() {
+      const w = document.getElementById('pl-next');
+      if (!w) return false;
+      if (w.querySelector('#pa-stopbtn')) return true;
+      whdr = w.querySelector('.pl-nw-h');
+      wbtn = document.createElement('button');
+      wbtn.id = 'pa-stopbtn';
+      wbtn.type = 'button';
+      wbtn.addEventListener('pointerdown', (e) => e.stopPropagation());   // щоб кнопка не «тягнула» віджет
+      wbtn.addEventListener('click', press);
+      w.insertBefore(wbtn, w.firstChild);
+      if (whdr) new MutationObserver(ui).observe(whdr, { childList: true, characterData: true, subtree: true });
+      ui();
+      return true;
+    }
+    if (!initWidget()) {
+      let n = 0;
+      const iv = setInterval(() => { if (initWidget() || ++n > 100) clearInterval(iv); }, 300);
+    }
+
+    // ---------- Кнопка 🔔 + «за N хв до» АБО «о хвилині ХХ» у кожному рядку планувальника ----------
+    const baseMin = (slot) => (slot % 2) * 30;                 // хвилина початку півгодини: 00 або 30
+    const nToMin = (slot, n) => (baseMin(slot) + n) % 60;      // зсув від початку (0..30) -> хвилина години
+    const minToN = (slot, v) => {                              // хвилина години -> зсув від початку (0..30)
+      if (baseMin(slot) === 0) return Math.max(0, Math.min(30, v));
+      if (v >= 30) return v - 30;
+      return v === 0 ? 30 : 0;                                 // 00 у другій половині = кінець (наступна година)
+    };
+    const hmSlot = (s) => pad2(Math.floor(s / 2)) + ':' + (s % 2 ? '30' : '00');
+    const parts = (row) => ({
+      slot: +row.querySelector('.pl-in').dataset.slot,
+      bell: row.querySelector('.pa-bell'), wrap: row.querySelector('.pa-wrap'),
+      mode: row.querySelector('.pa-mode'), min: row.querySelector('.pa-min'), at: row.querySelector('.pa-at')
+    });
+    function readRaw(row) {                                    // що зараз вибрано в рядку -> значення для збереження
+      const p = parts(row);
+      if (p.mode.value === 'b') return clampMin(p.min.value === '' ? defMin() : p.min.value);
+      const v = parseInt(p.at.value, 10);
+      return 'i' + (isNaN(v) ? 0 : minToN(p.slot, v));
+    }
+    function applyRow(row, raw) {                              // raw === undefined -> вимкнено
+      const p = parts(row);
+      p.bell.classList.toggle('on', raw !== undefined);
+      p.bell.textContent = raw !== undefined ? '🔔' : '🔕';
+      if (raw === undefined) return;
+      const x = parseAl(raw);
+      p.wrap.dataset.mode = x.mode;
+      p.mode.value = x.mode;
+      if (x.mode === 'b') p.min.value = clampMin(x.n);
+      else p.at.value = pad2(nToMin(p.slot, Math.max(0, Math.min(30, Math.round(x.n) || 0))));
+    }
+    function decorate(modal, plan) {
+      const dateEl = modal.querySelector('.pl-date');
+      const m = dateEl && /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(dateEl.textContent.trim());
+      if (!m) return;
+      const key = (+m[3]) + '-' + (+m[2] - 1) + '-' + (+m[1]);
+      plan.dataset.paKey = key;
+      const al = getAl()[key] || {};
+      plan.querySelectorAll('.pl-row').forEach((row) => {
+        if (row.querySelector('.pa-bell')) return;
+        const inp = row.querySelector('.pl-in');
+        if (!inp) return;
+        const s = +inp.dataset.slot;
+        row.insertAdjacentHTML('beforeend',
+          '<button type="button" class="pa-bell" title="Мелодія-нагадування для цієї півгодини">🔕</button>' +
+          '<span class="pa-wrap" data-mode="b">' +
+            '<select class="pa-mode" title="Коли грати мелодію"><option value="b">за</option><option value="i">о</option></select>' +
+            '<input type="number" class="pa-min" min="0" max="15" step="1" title="за скільки хвилин до початку (0–15)">' +
+            '<input type="text" class="pa-at" inputmode="numeric" maxlength="2" list="' + (s % 2 ? 'pa-dl-b' : 'pa-dl-a') + '" title="хвилина всередині півгодини (можна ввести вручну, ↑↓ або вибрати зі списку)">' +
+            '<small class="pa-ub">хв до початку</small>' +
+            '<small class="pa-ui">хв · ' + hmSlot(s) + '–' + hmSlot(s + 1) + '</small>' +
+          '</span>');
+        const p = parts(row);
+        p.min.value = defMin();
+        p.at.value = pad2(baseMin(s));
+        applyRow(row, al[s]);
+      });
+    }
+    function persistRow(plan, row, raw) {
+      const key = plan.dataset.paKey;
+      if (!key) return;
+      const slot = parts(row).slot, all = getAl();
+      if (raw === undefined) {
+        if (all[key]) { delete all[key][slot]; if (!Object.keys(all[key]).length) delete all[key]; }
+      } else (all[key] = all[key] || {})[slot] = raw;
+      saveAl(all);
+    }
+    function onPlanClick(e) {
+      const b = e.target.closest && e.target.closest('.pa-bell');
+      if (!b) return;
+      const plan = e.currentTarget, row = b.closest('.pl-row');
+      if (!plan.dataset.paKey) return;
+      if (b.classList.contains('on')) { applyRow(row, undefined); persistRow(plan, row, undefined); }
+      else { const raw = readRaw(row); applyRow(row, raw); persistRow(plan, row, raw); askPersist(); }
+    }
+    function onPlanInput(e) {
+      const t = e.target;
+      const ctl = t.closest && t.closest('.pa-mode, .pa-min, .pa-at');
+      if (!ctl) return;
+      const plan = e.currentTarget, row = ctl.closest('.pl-row'), p = parts(row);
+      if (ctl.classList.contains('pa-mode')) p.wrap.dataset.mode = p.mode.value;
+      if (!p.bell.classList.contains('on')) return;            // вимкнено — нічого не зберігаємо
+      if ((ctl.classList.contains('pa-min') || ctl.classList.contains('pa-at')) && ctl.value === '') return;
+      const raw = readRaw(row);
+      if (e.type === 'change' || ctl.classList.contains('pa-mode')) applyRow(row, raw);   // нормалізуємо відображення
+      persistRow(plan, row, raw);
+    }
+    function onPlanKey(e) {                                    // ↑ ↓ у полі хвилини: крок 1 хв всередині півгодини
+      const at = e.target.closest && e.target.closest('.pa-at');
+      if (!at || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
+      e.preventDefault();
+      const plan = e.currentTarget, row = at.closest('.pl-row'), p = parts(row);
+      const v = parseInt(at.value, 10);
+      const n = Math.max(0, Math.min(30, (isNaN(v) ? 0 : minToN(p.slot, v)) + (e.key === 'ArrowUp' ? 1 : -1)));
+      at.value = pad2(nToMin(p.slot, n));
+      if (p.bell.classList.contains('on')) persistRow(plan, row, 'i' + n);
+    }
+    // списки підказок: 00…30 для першої половини години, 30…00 для другої
+    if (!document.getElementById('pa-dl-a')) {
+      const d = document.createElement('div');
+      const opts = (a) => a.map((v) => '<option value="' + v + '"></option>').join('');
+      d.innerHTML = '<datalist id="pa-dl-a">' + opts(['00', '05', '10', '15', '20', '25', '30']) + '</datalist>' +
+                    '<datalist id="pa-dl-b">' + opts(['30', '35', '40', '45', '50', '55', '00']) + '</datalist>';
+      document.body.appendChild(d);
+    }
+    function pruneKey(key) {                             // після закриття вікна прибираємо мелодії для порожніх півгодин
+      const plan = parse(ls.get(PKEY))[key] || {}, all = getAl();
+      if (!all[key]) return;
+      let changed = false;
+      Object.keys(all[key]).forEach((s) => { if (!String(plan[s] || '').trim()) { delete all[key][s]; changed = true; } });
+      if (!Object.keys(all[key]).length) { delete all[key]; changed = true; }
+      if (changed) saveAl(all);
+    }
+    function hook(sel) {
+      const modal = document.querySelector(sel);
+      const plan = modal && modal.querySelector('.pl-plan');
+      if (!plan) return false;
+      if (plan.dataset.paHook) return true;
+      plan.dataset.paHook = '1';
+      new MutationObserver(() => decorate(modal, plan)).observe(plan, { childList: true });
+      plan.addEventListener('click', onPlanClick);
+      plan.addEventListener('input', onPlanInput);
+      plan.addEventListener('change', onPlanInput);
+      plan.addEventListener('keydown', onPlanKey);
+      let was = modal.classList.contains('open');
+      new MutationObserver(() => {
+        const open = modal.classList.contains('open');
+        if (was && !open && plan.dataset.paKey) pruneKey(plan.dataset.paKey);
+        was = open;
+      }).observe(modal, { attributes: true, attributeFilter: ['class'] });
+      decorate(modal, plan);
+      return true;
+    }
+    const hookAll = () => { const a = hook('#day-modal'), b = hook('#mw-note-modal'); return a && b; };
+    if (!hookAll()) {
+      let n = 0;
+      const iv = setInterval(() => { if (hookAll() || ++n > 100) clearInterval(iv); }, 300);
+    }
+
+    // ---------- Налаштування в панелі ⚙️ ----------
+    const panel = document.getElementById('panel');
+    if (panel && !document.getElementById('pas-box')) {
+      const box = document.createElement('div');
+      box.id = 'pas-box';
+      box.style.cssText = 'border-top:2px solid #6264a7; padding-top:12px; margin:15px 0; font-family:sans-serif;';
+      box.innerHTML = `
+        <h4 style="margin:0 0 10px 0;">🔔 Мелодії подій планувальника</h4>
+        <div class="row">Мелодії подій
+          <select id="pas-on" style="padding:4px; font-weight:bold;">
+            <option value="on">Увімкнено</option><option value="off">Вимкнено</option>
+          </select></div>
+        <div class="row">Типово за (хв) до події <input type="range" id="pas-defmin" min="0" max="15" step="1"></div>
+        <div class="row">Кнопка 🔔 (колір) <input type="color" id="pas-bell"></div>
+        <div class="row">Кнопка СТОП (фон) <input type="color" id="pas-stop-bg"></div>
+        <div class="row">Кнопка СТОП (текст) <input type="color" id="pas-stop-txt"></div>
+        <div style="margin:10px 0; border-top:1px dashed #ccc; padding-top:10px;">
+          <input type="file" id="pas-file" accept=".mp3,audio/*" style="display:none;">
+          <button type="button" id="pas-btn" style="width:100%; padding:8px; background:#2ecc71; color:#fff; border:none; border-radius:4px; cursor:pointer; font-weight:bold;">📁 ЗАВАНТАЖИТИ MP3 ДЛЯ ПОДІЙ</button>
+          <div id="pas-msg" style="font-size:11px; text-align:center; margin-top:4px; color:#555;"></div>
+          <div style="display:flex; gap:6px; margin-top:6px;">
+            <button type="button" id="pas-test" style="flex:1; padding:6px; cursor:pointer; background:#6264a7; color:#fff; border:none; border-radius:4px; font-weight:bold;">▶ Тест мелодії</button>
+            <button type="button" id="pas-del" style="padding:6px 10px; cursor:pointer; background:#e74c3c; color:#fff; border:none; border-radius:4px; font-weight:bold;" title="Повернути стандартну мелодію">✕</button>
+          </div>
+          <div style="font-size:11px; color:#777; margin-top:6px;">Гучність і тривалість беруться з налаштувань будильника («Гучність», «Тривалість»).</div>
+        </div>`;
+      const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+      const el = (id) => document.getElementById(id);
+      const DEF = { 'pas-on': 'on', 'pas-defmin': '5', 'pas-bell': '#ff9800', 'pas-stop-bg': '#d32f2f', 'pas-stop-txt': '#ffffff' };
+      Object.keys(DEF).forEach((id) => { el(id).value = ls.get(id) || DEF[id]; });
+      const apply = () => {
+        document.documentElement.style.setProperty('--pa-bell', el('pas-bell').value);
+        document.documentElement.style.setProperty('--pa-stop-bg', el('pas-stop-bg').value);
+        document.documentElement.style.setProperty('--pa-stop-txt', el('pas-stop-txt').value);
+      };
+      const onSet = (e) => {
+        const id = e.target && e.target.id;
+        if (!(id in DEF)) return;
+        ls.set(id, e.target.value);
+        apply();
+        if (id === 'pas-on' && e.target.value === 'off') stopSound();
+        ui();
+      };
+      box.addEventListener('input', onSet);
+      box.addEventListener('change', onSet);
+      apply();
+      const msg = el('pas-msg');
+      msg.textContent = ls.get('pas-filename') || 'Стандартна мелодія (alarm.mp3)';
+      el('pas-btn').onclick = () => el('pas-file').click();
+      el('pas-file').onchange = (e) => {
+        const f = e.target.files && e.target.files[0];
+        if (!f) return;
+        openDb((db) => {
+          if (!db) { msg.textContent = 'Не вдалося зберегти файл'; return; }
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).put(f, 'track');
+          tx.oncomplete = () => { ls.set('pas-filename', '✅ ' + f.name); msg.textContent = '✅ ' + f.name; loadOwn(); askPersist(); };
+        });
+      };
+      el('pas-del').onclick = () => {
+        openDb((db) => {
+          if (!db) return;
+          const tx = db.transaction(STORE, 'readwrite');
+          tx.objectStore(STORE).delete('track');
+          tx.oncomplete = () => { ls.del('pas-filename'); msg.textContent = 'Стандартна мелодія (alarm.mp3)'; loadOwn(); };
+        });
+      };
+      el('pas-test').onclick = () => { startSound(); };
+    }
+
+    loadOwn();
+    tick();
+    ui();
+  });
+})();
+</script>
+
+
 </html>
