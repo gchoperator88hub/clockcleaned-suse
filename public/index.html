@@ -4171,5 +4171,472 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<!-- ===== БЛОК 13: БУДИЛЬНИК №1 — РЯДОК ІЗ 4 ЗНАЧЕНЬ (як у №2 і №3) + ПЕРЕХІД ДО ЙОГО НАЛАШТУВАНЬ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const btn = document.getElementById('alarm-time-btn');
+    const alarmIn = document.getElementById('alarm-in');
+    const panel = document.getElementById('panel');
+    if (!btn || !alarmIn || window.__al1Init) return;
+    window.__al1Init = true;
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const hms = (sec) => {
+      sec = Math.max(0, sec);
+      return pad(Math.floor(sec / 3600)) + ':' + pad(Math.floor((sec % 3600) / 60)) + ':' + pad(sec % 60);
+    };
+    const clock = (ms) => { const d = new Date(ms); return pad(d.getHours()) + ':' + pad(d.getMinutes()) + ':' + pad(d.getSeconds()); };
+
+    // Стан будильника №1 (тільки для відображення; сам будильник працює як і раніше)
+    const al1 = { start: 0, last: '', snooze: 0, restart: false };
+
+    // ---------- Момент встановлення (старт) ----------
+    const onSet = () => {
+      const v = alarmIn.value;
+      if (!v) { al1.start = 0; al1.last = ''; return; }
+      if (v !== al1.last || al1.restart) { al1.start = Date.now(); al1.last = v; al1.restart = false; }
+    };
+    alarmIn.addEventListener('input', onSet);
+    alarmIn.addEventListener('change', onSet);
+
+    // ---------- Рядок із 4 значень: час дзвінка (HH:MM:SS) ( залишок | пройшло від старту | час старту ) ----------
+    function refresh() {
+      const now = Date.now();
+      const sn = al1.snooze > now ? al1.snooze : 0;
+      const val = alarmIn.value;
+      if (!sn && !val) return;                       // будильник не заданий — лишаємо «--:--» від додатка
+      let target;
+      if (sn) {
+        target = Math.ceil(sn / 60000) * 60000;      // дзвінок після відкладення спрацьовує на початку хвилини
+      } else {
+        const p = val.split(':').map(Number);
+        if (isNaN(p[0]) || isNaN(p[1])) return;
+        const d = new Date(now);
+        d.setHours(p[0], p[1], 0, 0);
+        if (d.getTime() <= now) d.setDate(d.getDate() + 1);   // як у додатку: якщо час минув — наступна доба
+        target = d.getTime();
+      }
+      if (!al1.start) al1.start = now;
+      btn.innerHTML = '<span>' + clock(target) + '</span> <span style="font-weight:bold;margin-left:4px;">(' +
+        hms(Math.floor((target - now) / 1000)) + ' | ' +
+        hms(Math.floor((now - al1.start) / 1000)) + ' | ' +
+        clock(al1.start) + ')</span>';
+    }
+
+    // Додаток щосекунди сам пише у кнопку 2 значення — одразу (до малювання) підміняємо на 4
+    const OPTS = { childList: true, characterData: true, subtree: true };
+    let lastRun = 0;
+    const obs = new MutationObserver(() => run());
+    function run() {
+      lastRun = Date.now();
+      obs.disconnect();
+      try { refresh(); } catch (e) {}
+      obs.observe(btn, OPTS);
+    }
+    setInterval(() => { if (Date.now() - lastRun > 1500) run(); }, 1000);   // запасний варіант
+    run();
+
+    // ---------- Перехід до налаштувань будильника №1 ----------
+    function scrollParent(el) {
+      let a = el.parentElement;
+      while (a && a !== panel) {
+        if (a.scrollHeight > a.clientHeight + 2 && getComputedStyle(a).overflowY !== 'visible') return a;
+        a = a.parentElement;
+      }
+      return panel;
+    }
+    function openAlarm1Settings() {
+      if (!panel) return;
+      panel.classList.add('open');
+      panel.setAttribute('aria-hidden', 'false');
+      const sec = document.getElementById('alarm-section');
+      if (!sec) return;
+      requestAnimationFrame(() => {
+        const box = scrollParent(sec);
+        const top = box.scrollTop + sec.getBoundingClientRect().top - box.getBoundingClientRect().top - 8;
+        box.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+        sec.style.outline = '3px solid #0078d4';
+        sec.style.outlineOffset = '4px';
+        setTimeout(() => { sec.style.outline = ''; sec.style.outlineOffset = ''; }, 1500);
+      });
+    }
+
+    // Перехоплення на рівні window — раніше за всі інші обробники кнопки
+    window.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+      if (t.closest('#alarm-time-btn')) {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        openAlarm1Settings();
+        return;
+      }
+      if (t.closest('#alarm-snooze-btn')) {                  // запам'ятовуємо кінець відкладення для рядка
+        const sl = document.getElementById('alarm-snooze');
+        const mins = Math.max(1, Math.min(600, parseInt((sl && sl.value) || '5', 10) || 5));
+        al1.snooze = Date.now() + mins * 60000;
+        return;
+      }
+      if (t.closest('#ext-ok')) {                            // кнопка OK («Інтервал») — новий старт відліку
+        al1.restart = true;
+        setTimeout(() => { al1.restart = false; }, 0);
+      }
+    }, true);
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 14: КЛІК ПО БУДЬ-ЯКІЙ КЛІТИНЦІ ТАБЛИЦІ / ВІДЖЕТУ ПОДІЇ → ПЛАНУВАЛЬНИК НА ПОТРІБНІЙ ПІВГОДИНІ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (window.__plJumpInit) return;
+    window.__plJumpInit = true;
+
+    const KEY = 'calendar_planner';
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    const dateKey = (d) => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+
+    const st = document.createElement('style');
+    st.textContent = `
+      .day-column .cell { cursor: pointer; }
+      .day-column .cell:hover { box-shadow: inset 0 0 0 2px rgba(98,100,167,.65); }
+      #pl-next { cursor: pointer !important; }
+      .pl-row.pl-hit { outline: 3px solid var(--pl-now-c, #e53935); outline-offset: -3px; }`;
+    document.head.appendChild(st);
+
+    // тиждень такий самий, як у головному додатку
+    const t0 = new Date(), dow = t0.getDay();
+    const monday = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + (dow === 0 ? -6 : 1 - dow));
+
+    // ---------- Відкрити вікно дня в режимі планувальника на потрібній півгодині ----------
+    function focusSlot(modal, slot) {
+      const plan = modal.querySelector('.pl-plan');
+      const inp = plan && plan.querySelector('.pl-in[data-slot="' + slot + '"]');
+      if (!inp) return;
+      const row = inp.parentNode;
+      plan.scrollTop = Math.max(0, row.offsetTop - (plan.clientHeight - row.offsetHeight) / 2);   // рядок по центру
+      inp.focus({ preventScroll: true });
+      const n = inp.value.length;
+      try { inp.setSelectionRange(n, n); } catch (e) {}
+      row.classList.add('pl-hit');
+      setTimeout(() => row.classList.remove('pl-hit'), 2000);
+    }
+
+    function openDay(key, slot) {
+      const modal = document.getElementById('day-modal');
+      const titleEl = document.getElementById('day-modal-title');
+      if (!modal || !titleEl) return;
+      const p = key.split('-').map(Number);
+      titleEl.textContent = pad(p[2]) + '.' + pad(p[1] + 1) + '.' + p[0];
+
+      // звичайна нотатка цього дня — щоб режим «Текст» теж показував і зберігав правильну дату
+      const ta = document.getElementById('day-note-text');
+      if (ta) {
+        let notes = {};
+        try { notes = JSON.parse(ls.get('calendar_notes') || '{}') || {}; } catch (e) {}
+        ta.value = notes[key] || '';
+      }
+      window.customActiveWeekDate = key;
+      watchClose();
+
+      // режим планувальника лише для цього відкриття (збережений вибір режиму не змінюється)
+      const prev = ls.get('pl-mode');
+      ls.set('pl-mode', 'plan');
+      modal.classList.add('open');
+      setTimeout(() => {
+        if (prev === null) ls.del('pl-mode'); else ls.set('pl-mode', prev);
+        focusSlot(modal, slot);
+      }, 0);
+    }
+
+    // після закриття вікна забуваємо «вибрану дату», щоб стара дата не перехопила наступну нотатку
+    let watching = false;
+    function watchClose() {
+      const dm = document.getElementById('day-modal');
+      if (watching || !dm) return;
+      watching = true;
+      let was = dm.classList.contains('open');
+      new MutationObserver(() => {
+        const now = dm.classList.contains('open');
+        if (was && !now) window.customActiveWeekDate = null;
+        was = now;
+      }).observe(dm, { attributes: true, attributeFilter: ['class'] });
+    }
+    watchClose();
+
+    // ---------- Найближча подія (та сама логіка, що й у віджеті події) ----------
+    function nextEvent() {
+      let all = {};
+      try { all = JSON.parse(ls.get(KEY) || '{}') || {}; } catch (e) {}
+      const list = [];
+      Object.keys(all).forEach((k) => {
+        const p = k.split('-').map(Number);
+        if (p.length !== 3 || p.some(isNaN)) return;
+        const day = all[k] || {};
+        Object.keys(day).forEach((s) => {
+          const si = +s, txt = String(day[s] || '').trim();
+          if (!txt || isNaN(si) || si < 0 || si > 47) return;
+          const start = new Date(p[0], p[1], p[2], 0, si * 30).getTime();
+          list.push({ start: start, end: start + 1800000, text: txt });
+        });
+      });
+      list.sort((a, b) => a.start - b.start);
+      const merged = [];
+      list.forEach((e) => {
+        const l = merged[merged.length - 1];
+        if (l && l.end === e.start && l.text === e.text) l.end = e.end; else merged.push(e);
+      });
+      const t = Date.now();
+      return merged.find((e) => e.end > t) || null;
+    }
+
+    // ---------- Кліки ----------
+    let down = null;
+    document.addEventListener('pointerdown', (e) => {
+      down = (e.target && e.target.closest && e.target.closest('#pl-next')) ? { x: e.clientX, y: e.clientY } : null;
+    }, true);
+
+    document.addEventListener('click', (e) => {
+      const t = e.target;
+      if (!t || !t.closest) return;
+
+      // 1) будь-яка клітинка таблиці тижня: верхня половина = :00, нижня = :30
+      const cell = t.closest('#grid-main .day-column .cell');
+      if (cell) {
+        const col = cell.parentElement;
+        const cols = Array.prototype.slice.call(document.querySelectorAll('#grid-main .day-column'));
+        const i = cols.indexOf(col);
+        const h = Array.prototype.indexOf.call(col.children, cell);
+        if (i < 0 || i > 6 || h < 0 || h > 23) return;
+        const r = cell.getBoundingClientRect();
+        const half = (e.clientY - r.top) >= r.height / 2 ? 1 : 0;
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
+        openDay(dateKey(d), h * 2 + half);
+        return;
+      }
+
+      // 2) віджет найближчої події (клік, а не перетягування)
+      if (t.closest('#pl-next')) {
+        if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+        const ev = nextEvent();
+        if (!ev) return;
+        const s = new Date(ev.start);
+        openDay(dateKey(s), s.getHours() * 2 + (s.getMinutes() >= 30 ? 1 : 0));
+      }
+    });
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 15: СМУГА ПРОКРУТКИ 24 ГОДИН ТАБЛИЦІ + КНОПКА «ДО ПОТОЧНОГО ЧАСУ» ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const grid = document.getElementById('grid-main');
+    const scroller = document.querySelector('.scroller');
+    if (!grid || !scroller || document.getElementById('sb-track')) return;
+    const root = document.documentElement;
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+
+    // ---------- Стилі ----------
+    const st = document.createElement('style');
+    st.textContent = `
+      #sb-now { position: fixed; z-index: 960; right: 3px; width: 34px; height: 34px; padding: 0; border: none; border-radius: 50%;
+        cursor: pointer; font-size: 18px; line-height: 1; background: var(--sb-btn-bg, #6264a7); color: var(--sb-btn-txt, #ffffff);
+        box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+      #sb-track { position: fixed; z-index: 960; right: 0; width: var(--sb-w, 14px); border-radius: 8px; opacity: .92;
+        background: var(--sb-track, #555555); touch-action: none; user-select: none; -webkit-user-select: none; }
+      #sb-thumb { position: absolute; left: 1px; right: 1px; top: 0; min-height: 28px; border-radius: 7px; cursor: grab;
+        background: var(--sb-thumb, #6264a7); box-shadow: 0 0 0 1px rgba(255,255,255,.75); }
+      #sb-label { position: absolute; right: calc(100% + 6px); transform: translateY(-50%); padding: 2px 8px; border-radius: 10px;
+        font: 800 14px 'Segoe UI', sans-serif; white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s;
+        background: var(--sb-btn-bg, #6264a7); color: var(--sb-btn-txt, #ffffff); }
+      #sb-label.show { opacity: 1; }
+      html[data-sb="hide"] #sb-track, html[data-sb="hide"] #sb-now { display: none !important; }`;
+    document.head.appendChild(st);
+
+    const track = document.createElement('div');
+    track.id = 'sb-track';
+    track.innerHTML = '<div id="sb-thumb"></div><div id="sb-label"></div>';
+    const btn = document.createElement('button');
+    btn.id = 'sb-now';
+    btn.type = 'button';
+    btn.textContent = '⏱';
+    btn.title = 'Повернути до поточного часу (лінія часу посередині екрана)';
+    document.body.appendChild(track);
+    document.body.appendChild(btn);
+    const thumb = track.querySelector('#sb-thumb');
+    const label = track.querySelector('#sb-label');
+
+    // ---------- Стан ----------
+    // Додаток сам рухає таблицю через transform (кожні 10 хв ставить поточний час на середину).
+    // Ручне зміщення додається окремо (translate/top), тому автооновлення додатка йому не заважає.
+    const useTranslate = 'translate' in grid.style;
+    let manual = false, Tm = 0, viewH = 0, totalH = 1, lastAppT = 0, labelTimer = null;
+
+    const appT = () => { const m = /translateY\((-?[\d.]+)px\)/.exec(grid.style.transform || ''); return m ? parseFloat(m[1]) : 0; };
+    const lo = () => Math.min(0, viewH - totalH);
+    const clampT = (T) => Math.max(lo(), Math.min(0, T));
+    const currentT = () => (manual ? Tm : appT());
+    const setOff = (off) => {
+      if (useTranslate) grid.style.translate = off ? '0 ' + off + 'px' : '';
+      else grid.style.top = off ? off + 'px' : '';
+    };
+    const applyOffset = () => setOff(Tm - appT());
+
+    function layout() {
+      const r = scroller.getBoundingClientRect();
+      viewH = r.height;
+      totalH = Math.max(1, grid.offsetHeight);
+      btn.style.top = (r.top + 6) + 'px';
+      track.style.top = (r.top + 46) + 'px';
+      track.style.height = Math.max(40, r.height - 52) + 'px';
+    }
+    function flash() {
+      label.classList.add('show');
+      clearTimeout(labelTimer);
+      labelTimer = setTimeout(() => label.classList.remove('show'), 1500);
+    }
+    function paint() {
+      const T = clampT(currentT());
+      const trackH = track.clientHeight;
+      const thumbH = Math.max(28, Math.min(trackH, trackH * viewH / totalH));
+      const frac = lo() === 0 ? 0 : T / lo();
+      thumb.style.height = thumbH + 'px';
+      thumb.style.top = (frac * (trackH - thumbH)) + 'px';
+      const hours = Math.max(0, Math.min(24, (viewH / 2 - T) / (totalH / 24)));   // час на лінії посередині екрана
+      const hh = Math.min(23, Math.floor(hours)), mm = Math.min(59, Math.floor((hours - Math.floor(hours)) * 60));
+      label.textContent = pad(hh) + ':' + pad(mm);
+      label.style.top = (frac * (trackH - thumbH) + thumbH / 2) + 'px';
+    }
+    function setT(T) {
+      manual = true;
+      Tm = clampT(T);
+      applyOffset();
+      paint();
+      flash();
+    }
+
+    // ---------- Кнопка «до поточного часу»: повертає звичайний режим додатка ----------
+    function resetDefault() {
+      manual = false;
+      setOff(0);
+      const n = new Date();
+      const cellH = parseFloat(getComputedStyle(root).getPropertyValue('--hour-h')) || 60;
+      const y = n.getHours() * cellH + (n.getMinutes() / 60) * cellH;
+      grid.style.transform = 'translateY(' + (scroller.getBoundingClientRect().height / 2 - y) + 'px)';
+      lastAppT = appT();
+      layout();
+      paint();
+      flash();
+    }
+    btn.addEventListener('click', resetDefault);
+
+    // ---------- Перетягування повзунка / клік по смузі ----------
+    let drag = null;
+    const moveTo = (clientY) => {
+      const trackH = track.clientHeight, thumbH = thumb.offsetHeight, span = trackH - thumbH;
+      const top = Math.max(0, Math.min(span, clientY - drag.trTop - drag.dy));
+      setT(lo() * (span > 0 ? top / span : 0));
+    };
+    track.addEventListener('pointerdown', (e) => {
+      if (e.button > 0) return;
+      const tr = track.getBoundingClientRect(), th = thumb.getBoundingClientRect();
+      drag = { trTop: tr.top, dy: e.target === thumb ? e.clientY - th.top : th.height / 2 };
+      try { track.setPointerCapture(e.pointerId); } catch (err) {}
+      moveTo(e.clientY);
+    });
+    track.addEventListener('pointermove', (e) => { if (drag) moveTo(e.clientY); });
+    const endDrag = () => { drag = null; };
+    track.addEventListener('pointerup', endDrag);
+    track.addEventListener('pointercancel', endDrag);
+
+    // колесо миші над таблицею
+    scroller.addEventListener('wheel', (e) => {
+      if (e.ctrlKey) return;
+      e.preventDefault();
+      setT(currentT() - (e.deltaMode === 1 ? e.deltaY * 40 : e.deltaY));
+    }, { passive: false });
+
+    // ---------- Синхронізація з додатком ----------
+    new MutationObserver(() => {                         // додаток переставив таблицю (кожні 10 хв)
+      const a = appT();
+      if (a === lastAppT) return;
+      lastAppT = a;
+      if (manual) applyOffset();                         // у ручному режимі картинка не «пливе»
+      paint();
+    }).observe(grid, { attributes: true, attributeFilter: ['style'] });
+
+    const relayout = () => {
+      layout();
+      if (manual) { Tm = clampT(Tm); applyOffset(); }
+      paint();
+    };
+    if (window.ResizeObserver) { const ro = new ResizeObserver(relayout); ro.observe(scroller); ro.observe(grid); }
+    window.addEventListener('resize', relayout);
+
+    // ---------- Налаштування в панелі ⚙️ ----------
+    const panel = document.getElementById('panel');
+    if (panel) {
+      const F = [
+        ['sbs-show', 'Смуга прокрутки таблиці', 'select', 'show'],
+        ['sbs-w', 'Товщина смуги (px)', 'range', '14'],
+        ['sbs-track', 'Колір смуги', 'color', '#555555'],
+        ['sbs-thumb', 'Колір повзунка', 'color', '#6264a7'],
+        ['sbs-btn-bg', 'Кнопка/підказка (фон)', 'color', '#6264a7'],
+        ['sbs-btn-txt', 'Кнопка/підказка (текст)', 'color', '#ffffff']
+      ];
+      const box = document.createElement('div');
+      box.style.cssText = 'border-top:2px solid #6264a7; padding-top:12px; margin:15px 0; font-family:sans-serif;';
+      box.innerHTML = '<h4 style="margin:0 0 10px 0;">↕ Прокрутка таблиці (24 год)</h4>' + F.map((f) => {
+        let c;
+        if (f[2] === 'select') c = '<select id="' + f[0] + '" style="padding:4px; font-weight:bold;"><option value="show">Показувати</option><option value="hide">Сховати</option></select>';
+        else if (f[2] === 'range') c = '<input type="range" id="' + f[0] + '" min="8" max="40" step="1">';
+        else c = '<input type="color" id="' + f[0] + '">';
+        return '<div class="row">' + f[1] + ' ' + c + '</div>';
+      }).join('');
+      const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+      const el = (id) => document.getElementById(id);
+      const apply = () => {
+        root.dataset.sb = el('sbs-show').value;
+        root.style.setProperty('--sb-w', el('sbs-w').value + 'px');
+        root.style.setProperty('--sb-track', el('sbs-track').value);
+        root.style.setProperty('--sb-thumb', el('sbs-thumb').value);
+        root.style.setProperty('--sb-btn-bg', el('sbs-btn-bg').value);
+        root.style.setProperty('--sb-btn-txt', el('sbs-btn-txt').value);
+        relayout();
+      };
+      F.forEach((f) => { el(f[0]).value = ls.get(f[0]) || f[3]; });
+      const onChange = (e) => {
+        if (!e.target || !F.some((f) => f[0] === e.target.id)) return;
+        ls.set(e.target.id, e.target.value);
+        apply();
+      };
+      box.addEventListener('input', onChange);
+      box.addEventListener('change', onChange);
+      apply();
+    }
+
+    lastAppT = appT();
+    layout();
+    paint();
+  });
+})();
+</script>
 
 </html>
