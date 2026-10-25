@@ -4639,4 +4639,350 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 
+<!-- ===== БЛОК 16: РОЗМІРИ ВСІХ ЕЛЕМЕНТІВ ВІДЖЕТА МІСЯЦЯ (за замовчуванням ×2, усе регулюється) ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    if (document.getElementById('mw-size-box')) return;
+    const root = document.documentElement;
+    const get = (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+    const del = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+    // ---------- Стилі: усі розміри — множники (×) відносно базового розміру віджета; значення за замовчуванням — у 2 рази більші ----------
+    const st = document.createElement('style');
+    st.textContent = `
+      /* ширина віджета тепер "мінімальна": при великих цифрах він сам розширюється, а не ламається */
+      html #mw-widget { width: auto !important; min-width: var(--mw-w, 320px); }
+      html #mw-widget .mw-title { font-size: calc(1.2em * var(--mw-k-title, 2)); font-weight: var(--mw-fw, 900); }
+      html #mw-widget .mw-nav { font-size: calc(1em * var(--mw-k-nav, 2)); font-weight: 900; border-width: var(--mw-bw, 2px); }
+      html #mw-widget .mw-grid { grid-template-columns: auto repeat(7, 1fr); gap: calc(.25em * var(--mw-k-gap, 1.5)); }
+      html #mw-widget .mw-wd { font-size: calc(.85em * var(--mw-k-wd, 2)); font-weight: var(--mw-fw, 900); }
+      html #mw-widget .mw-wk { font-size: calc(.8em * var(--mw-k-wk, 2)); font-weight: var(--mw-fw, 900); padding: 0 .2em; }
+      html #mw-widget .mw-day { font-size: calc(.95em * var(--mw-k-day, 2)); font-weight: var(--mw-fw, 900);
+        padding: calc(.45em * var(--mw-k-pad, .8)) 0; border-width: var(--mw-bw, 2px); }
+      html #mw-widget .mw-day.today { border-width: var(--mw-bw, 2px) !important; }
+      html #mw-widget .mw-notes { font-size: calc(.85em * var(--mw-k-notes, 2)); width: 0; min-width: 100%;
+        max-height: calc(var(--mw-w, 320px) / 22 * 9 * var(--mw-k-list, 1.5)); }
+      html #mw-widget .mw-note-day { font-weight: var(--mw-fw, 900); }
+      html #mw-widget .mw-note-txt { -webkit-line-clamp: var(--mw-lines, 3); font-weight: 700; }`;
+    document.head.appendChild(st);
+
+    // ---------- Налаштування: [id, підпис, за замовчуванням, min, max, крок, змінна CSS, одиниця] ----------
+    const F = [
+      ['mws2-k-title', 'Заголовок місяця (×)', '2', 0.5, 4, 0.1, '--mw-k-title', ''],
+      ['mws2-k-nav', 'Кнопки ‹ › (×)', '2', 0.5, 4, 0.1, '--mw-k-nav', ''],
+      ['mws2-k-wd', 'Назви днів тижня (×)', '2', 0.5, 4, 0.1, '--mw-k-wd', ''],
+      ['mws2-k-wk', 'Номери тижнів (×)', '2', 0.5, 4, 0.1, '--mw-k-wk', ''],
+      ['mws2-k-day', 'Числа днів (×)', '2', 0.5, 4, 0.1, '--mw-k-day', ''],
+      ['mws2-k-pad', 'Висота клітинок днів (×)', '0.8', 0.2, 3, 0.1, '--mw-k-pad', ''],
+      ['mws2-k-gap', 'Відстань між клітинками (×)', '1.5', 0, 4, 0.1, '--mw-k-gap', ''],
+      ['mws2-bw', 'Товщина рамок клітинок (px)', '2', 1, 8, 1, '--mw-bw', 'px'],
+      ['mws2-fw', 'Жирність тексту (400–900)', '900', 400, 900, 100, '--mw-fw', ''],
+      ['mws2-k-notes', 'Текст списку нотаток (×)', '2', 0.5, 4, 0.1, '--mw-k-notes', ''],
+      ['mws2-lines', 'Рядків тексту однієї нотатки', '3', 1, 8, 1, '--mw-lines', ''],
+      ['mws2-k-list', 'Висота списку нотаток (×)', '1.5', 0.5, 5, 0.1, '--mw-k-list', '']
+    ];
+
+    const det = document.createElement('details');
+    det.id = 'mw-size-box';
+    det.style.cssText = 'margin:8px 0; font-family:sans-serif;';
+    det.innerHTML = '<summary style="cursor:pointer; font-weight:bold; padding:4px 0;">🔍 Розміри елементів віджета місяця</summary>' +
+      F.map((f) => '<div class="row">' + f[1] + ' <input type="range" id="' + f[0] + '" min="' + f[3] + '" max="' + f[4] + '" step="' + f[5] + '"></div>').join('') +
+      '<div class="row"><button type="button" id="mw-size-reset" style="width:100%; padding:6px; cursor:pointer; background:#e74c3c; color:#fff; border:none; border-radius:4px; font-weight:bold;">Скинути розміри елементів</button></div>';
+
+    const mwBox = document.getElementById('mw-settings-box');
+    const resetRow = document.getElementById('mw-reset-pos');
+    const panel = document.getElementById('panel');
+    if (mwBox && resetRow && resetRow.closest('.row')) mwBox.insertBefore(det, resetRow.closest('.row'));
+    else if (mwBox) mwBox.appendChild(det);
+    else if (panel) {
+      const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(det); else panel.appendChild(det);
+    }
+
+    const el = (id) => document.getElementById(id);
+    const apply = () => F.forEach((f) => {
+      const inp = el(f[0]);
+      if (inp) root.style.setProperty(f[6], inp.value + f[7]);
+    });
+    F.forEach((f) => { const inp = el(f[0]); if (inp) inp.value = get(f[0]) || f[2]; });
+    det.addEventListener('input', (e) => {
+      const id = e.target && e.target.id;
+      if (!F.some((f) => f[0] === id)) return;
+      set(id, e.target.value);
+      apply();
+    });
+    const rb = el('mw-size-reset');
+    if (rb) rb.onclick = () => {
+      F.forEach((f) => { del(f[0]); const inp = el(f[0]); if (inp) inp.value = f[2]; });
+      apply();
+    };
+    apply();
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 17: ВІДЖЕТ НАЙБЛИЖЧОЇ ПОДІЇ — ЗАЛИШОК У ДНЯХ, КОЛИ ПОНАД 24 ГОДИНИ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    // "через 60 г 5 хв"  ->  "через 2 дн 12 г"  (коли залишилось 24 години і більше)
+    function fix(el) {
+      const m = /^(через|залишилось) (\d+) г (\d+) хв$/.exec((el.textContent || '').trim());
+      if (!m) return;
+      const h = +m[2];
+      if (h < 24) return;
+      const d = Math.floor(h / 24), rh = h % 24;
+      el.textContent = m[1] + ' ' + d + ' дн' + (rh ? ' ' + rh + ' г' : '');
+    }
+    function attach() {
+      const el = document.querySelector('#pl-next .pl-nw-cd');
+      if (!el) return false;
+      new MutationObserver(() => fix(el)).observe(el, { childList: true, characterData: true, subtree: true });
+      fix(el);
+      return true;
+    }
+    if (!attach()) {
+      let n = 0;
+      const iv = setInterval(() => { if (attach() || ++n > 100) clearInterval(iv); }, 300);
+    }
+  });
+})();
+</script>
+
+<!-- ===== БЛОК 18: ПОДІЇ ПЛАНУВАЛЬНИКА У СПИСКУ ПІД КАЛЕНДАРЕМ ВІДЖЕТА МІСЯЦЯ + ПАРАМЕТРИ ПОКАЗУ ===== -->
+<script>
+(() => {
+  const ready = (f) => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => {
+    const w = document.getElementById('mw-widget');
+    if (!w || document.getElementById('mw-plist')) return;
+    const root = document.documentElement;
+    const KEY = 'calendar_planner';
+    const MONTHS = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
+    const ls = {
+      get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } },
+      set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} },
+      del: (k) => { try { localStorage.removeItem(k); } catch (e) {} }
+    };
+    const pad = (n) => String(n).padStart(2, '0');
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+    const hm = (s) => pad(s >> 1) + ':' + (s % 2 ? '30' : '00');
+
+    // ---------- Стилі ----------
+    // data-mw-lst: all | notes | events | none  — що показувати під календарем
+    const st = document.createElement('style');
+    st.textContent = `
+      html[data-mw-lst="events"] #mw-widget .mw-notes:not(.mw-plist),
+      html[data-mw-lst="none"] #mw-widget .mw-notes:not(.mw-plist),
+      html[data-mw-lst="notes"] #mw-widget .mw-plist,
+      html[data-mw-lst="none"] #mw-widget .mw-plist { display: none !important; }
+      #mw-widget .mw-plist { margin-top: .4em; }
+      #mw-widget .mw-ev { display: flex; gap: .5em; padding: .3em 0; cursor: pointer; }
+      #mw-widget .mw-ev:hover { background: rgba(128,128,128,.12); }
+      #mw-widget .mw-ev.past { opacity: .5; }
+      #mw-widget .mw-ev-day { font-weight: 800; min-width: 1.8em; color: var(--mw-wk, #6264a7); }
+      #mw-widget .mw-ev-time { font-weight: 800; white-space: nowrap; color: var(--mw-ev-time, #c2185b); }
+      #mw-widget .mw-ev-txt { flex: 1; overflow: hidden; display: -webkit-box; -webkit-line-clamp: var(--mw-lines, 3);
+        -webkit-box-orient: vertical; word-break: break-word; white-space: pre-wrap; color: var(--mw-txt, #000000); }`;
+    document.head.appendChild(st);
+
+    // другий список (клас mw-notes — щоб працювали ті самі розміри, прокрутка й перетягування віджета)
+    const list = document.createElement('div');
+    list.id = 'mw-plist';
+    list.className = 'mw-notes mw-plist';
+    const notesEl = w.querySelector('.mw-notes');
+    if (notesEl) notesEl.after(list); else w.appendChild(list);
+
+    // ---------- Дані планувальника ----------
+    let raw = null, data = {};
+    const getPlan = () => {
+      const r = ls.get(KEY) || '';
+      if (r !== raw) { raw = r; try { data = JSON.parse(r || '{}') || {}; } catch (e) { data = {}; } }
+      return data;
+    };
+    const monthOfWidget = () => {
+      const t = w.querySelector('.mw-title');
+      const m = t && t.textContent.trim().match(/^(\S+)\s+(\d{4})$/);
+      if (!m) return null;
+      const mi = MONTHS.indexOf(m[1]);
+      return mi < 0 ? null : { y: +m[2], m: mi };
+    };
+
+    // ---------- Малювання списку подій ----------
+    let lastSig = '';
+    function render(force) {
+      if (root.dataset.mwShow === 'hide') return;
+      const mode = root.dataset.mwLst || 'all';
+      if (mode === 'notes' || mode === 'none') { lastSig = ''; return; }
+      const mon = monthOfWidget();
+      if (!mon) return;
+      const futureOnly = ls.get('mws3-range') === 'future';
+      const merge = ls.get('mws3-merge') !== 'split';
+      const now = Date.now();
+      const sig = (ls.get(KEY) || '') + '|' + mon.y + '-' + mon.m + '|' + futureOnly + merge + '|' + Math.floor(now / 60000);
+      if (!force && sig === lastSig) return;
+      lastSig = sig;
+
+      const plan = getPlan();
+      const dim = new Date(mon.y, mon.m + 1, 0).getDate();
+      const items = [];
+      for (let d = 1; d <= dim; d++) {
+        const day = plan[mon.y + '-' + mon.m + '-' + d];
+        if (!day) continue;
+        const slots = Object.keys(day).map(Number)
+          .filter((s) => s >= 0 && s < 48 && String(day[s]).trim() !== '').sort((a, b) => a - b);
+        let cur = null;
+        slots.forEach((s) => {
+          const txt = String(day[s]).trim();
+          if (merge && cur && cur.last + 1 === s && cur.txt === txt) cur.last = s;
+          else { if (cur) items.push(cur); cur = { d: d, first: s, last: s, txt: txt }; }
+        });
+        if (cur) items.push(cur);
+      }
+      let html = '';
+      items.forEach((it) => {
+        const endMs = new Date(mon.y, mon.m, it.d, 0, (it.last + 1) * 30).getTime();
+        const past = endMs <= now;
+        if (futureOnly && past) return;
+        html += '<div class="mw-ev' + (past ? ' past' : '') + '" data-day="' + it.d + '" data-slot="' + it.first + '">' +
+          '<span class="mw-ev-day">' + it.d + '</span>' +
+          '<span class="mw-ev-time">' + hm(it.first) + (it.last > it.first ? '–' + hm(it.last + 1) : '') + '</span>' +
+          '<span class="mw-ev-txt">' + esc(it.txt) + '</span></div>';
+      });
+      list.innerHTML = html || '<div class="mw-empty">Подій планувальника цього місяця немає</div>';
+    }
+
+    // ---------- Клік по події → вікно планувальника на цій півгодині ----------
+    function focusSlot(modal, slot) {
+      const plan = modal.querySelector('.pl-plan');
+      const inp = plan && plan.querySelector('.pl-in[data-slot="' + slot + '"]');
+      if (!inp) return;
+      const row = inp.parentNode;
+      plan.scrollTop = Math.max(0, row.offsetTop - (plan.clientHeight - row.offsetHeight) / 2);
+      inp.focus({ preventScroll: true });
+      const n = inp.value.length;
+      try { inp.setSelectionRange(n, n); } catch (e) {}
+      row.classList.add('pl-hit');
+      setTimeout(() => row.classList.remove('pl-hit'), 2000);
+    }
+    let watching = false;
+    function watchClose() {
+      const dm = document.getElementById('day-modal');
+      if (watching || !dm) return;
+      watching = true;
+      let was = dm.classList.contains('open');
+      new MutationObserver(() => {
+        const now = dm.classList.contains('open');
+        if (was && !now) window.customActiveWeekDate = null;
+        was = now;
+      }).observe(dm, { attributes: true, attributeFilter: ['class'] });
+    }
+    function openDay(key, slot) {
+      const modal = document.getElementById('day-modal');
+      const titleEl = document.getElementById('day-modal-title');
+      if (!modal || !titleEl) return;
+      const p = key.split('-').map(Number);
+      titleEl.textContent = pad(p[2]) + '.' + pad(p[1] + 1) + '.' + p[0];
+      const ta = document.getElementById('day-note-text');
+      if (ta) {
+        let notes = {};
+        try { notes = JSON.parse(ls.get('calendar_notes') || '{}') || {}; } catch (e) {}
+        ta.value = notes[key] || '';
+      }
+      window.customActiveWeekDate = key;
+      watchClose();
+      const prev = ls.get('pl-mode');
+      ls.set('pl-mode', 'plan');
+      modal.classList.add('open');
+      setTimeout(() => {
+        if (prev === null) ls.del('pl-mode'); else ls.set('pl-mode', prev);
+        focusSlot(modal, slot);
+      }, 0);
+    }
+    list.addEventListener('click', (e) => {
+      const it = e.target.closest('.mw-ev');
+      const mon = monthOfWidget();
+      if (!it || !mon) return;
+      openDay(mon.y + '-' + mon.m + '-' + it.dataset.day, parseInt(it.dataset.slot, 10));
+    });
+
+    // ---------- Налаштування (замінюють старий перемикач «Список нотаток під календарем») ----------
+    const old = document.getElementById('mw-list');
+    if (old) {
+      if (ls.get('mws-mw-list') === 'off' && ls.get('mws3-show') === null) ls.set('mws3-show', 'none');
+      ls.set('mws-mw-list', 'on');
+      old.value = 'on';
+      root.dataset.mwList = 'on';
+      if (old.closest('.row')) old.closest('.row').style.display = 'none';
+    }
+    const box = document.createElement('div');
+    box.id = 'mw-list-box';
+    box.innerHTML = `
+      <div class="row">Список під календарем
+        <select id="mws3-show" style="padding:4px; font-weight:bold;">
+          <option value="all">Нотатки + події</option>
+          <option value="notes">Тільки нотатки</option>
+          <option value="events">Тільки події планувальника</option>
+          <option value="none">Нічого</option>
+        </select></div>
+      <div class="row">Події планувальника
+        <select id="mws3-range" style="padding:4px; font-weight:bold;">
+          <option value="all">Усі за місяць</option>
+          <option value="future">Тільки майбутні</option>
+        </select></div>
+      <div class="row">Сусідні півгодини
+        <select id="mws3-merge" style="padding:4px; font-weight:bold;">
+          <option value="merge">Об'єднувати (14:00–15:00)</option>
+          <option value="split">Окремі рядки</option>
+        </select></div>
+      <div class="row">Колір часу події <input type="color" id="mws3-tc"></div>`;
+    const anchor = old && old.closest('.row');
+    const panel = document.getElementById('panel');
+    if (anchor) anchor.after(box);
+    else if (document.getElementById('mw-settings-box')) document.getElementById('mw-settings-box').appendChild(box);
+    else if (panel) {
+      const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) saveBtn.before(box); else panel.appendChild(box);
+    }
+    const el = (id) => document.getElementById(id);
+    el('mws3-show').value = ls.get('mws3-show') || 'all';
+    el('mws3-range').value = ls.get('mws3-range') || 'all';
+    el('mws3-merge').value = ls.get('mws3-merge') || 'merge';
+    el('mws3-tc').value = ls.get('mws3-tc') || '#c2185b';
+    const apply = () => {
+      root.dataset.mwLst = el('mws3-show').value;
+      root.style.setProperty('--mw-ev-time', el('mws3-tc').value);
+      render(true);
+    };
+    box.addEventListener('input', (e) => {
+      const id = e.target && e.target.id;
+      if (id !== 'mws3-show' && id !== 'mws3-range' && id !== 'mws3-merge' && id !== 'mws3-tc') return;
+      ls.set(id, e.target.value);
+      apply();
+    });
+    box.addEventListener('change', (e) => {
+      const id = e.target && e.target.id;
+      if (id !== 'mws3-show' && id !== 'mws3-range' && id !== 'mws3-merge') return;
+      ls.set(id, e.target.value);
+      apply();
+    });
+    root.dataset.mwLst = el('mws3-show').value;
+    root.style.setProperty('--mw-ev-time', el('mws3-tc').value);
+
+    // ---------- Оновлення: зміна місяця у віджеті, зміна планувальника, раз на 30 с (минулі події) ----------
+    const grid = w.querySelector('.mw-grid');
+    if (grid) new MutationObserver(() => render(false)).observe(grid, { childList: true });
+    window.addEventListener('pl:changed', () => render(true));
+    window.addEventListener('storage', () => render(true));
+    window.addEventListener('mw:settings', () => render(true));
+    setInterval(() => { if (!document.hidden) render(false); }, 30000);
+    render(true);
+  });
+})();
+</script>
+
 </html>
