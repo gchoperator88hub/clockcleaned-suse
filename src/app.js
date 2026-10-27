@@ -692,16 +692,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const selectedMode = sourceModeElement ? sourceModeElement.value : "base64";
     const newSrc = (selectedMode === "url") ? originalUrlSource : alarmBase64Source;
 
-    // Якщо шлях змінився в меню, оновлюємо плеєр вашого старого коду
+    // from gpt 27.10.26
     if (window.globalAlarmAudio.src !== newSrc) {
-      const wasPlaying = !window.globalAlarmAudio.paused;
-      window.globalAlarmAudio.pause();
-      window.globalAlarmAudio.src = newSrc;
-      window.globalAlarmAudio.load();
-      if (wasPlaying) {
-        window.globalAlarmAudio.play().catch(e => console.log("Помилка відтворення:", e));
-      }
-    }
+  window.globalAlarmAudio.pause();
+  window.globalAlarmAudio.src = newSrc;
+  window.globalAlarmAudio.load();
+}
   }
 
   // Перевіряємо вибір одразу при запуску сторінки
@@ -713,20 +709,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 });
 
-// Попереднє зняття блокування звуку браузером за першим кліком користувача на сторінці
-const removeBrowserAudioBlock = () => {
-  if (window.globalAlarmAudio) {
-    window.globalAlarmAudio.play().then(() => {
-  window.globalAlarmAudio.pause();
-  window.globalAlarmAudio.currentTime = 0;
-  console.log("Alarm audio unlocked");
-}).catch(err => console.log("Alarm unlock failed:", err));
-    document.removeEventListener('click', removeBrowserAudioBlock);
-    document.removeEventListener('touchstart', removeBrowserAudioBlock);
-  }
-};
-document.addEventListener('click', removeBrowserAudioBlock);
-document.addEventListener('touchstart', removeBrowserAudioBlock);
+
 
 function startAlarmSound() {
   // Зчитуємо параметри "Тривалість" та "Гучність" безпосередньо з вашої HTML-панелі
@@ -738,12 +721,8 @@ function startAlarmSound() {
   window.globalAlarmAudio.currentTime = 0;
   window.globalAlarmAudio.volume = Math.max(0, Math.min(1, volumePercent / 100));
   
-  // Запускаємо відтворення файлу alarm.mp3
-  window.globalAlarmAudio.play().catch(() => {
-    // Якщо кліків не було, звук активується примусово при взаємодії з вікном будильника
-    const playOnClick = () => { window.globalAlarmAudio.play().catch(() => {}); document.removeEventListener('click', playOnClick); };
-    document.addEventListener('click', playOnClick);
-  });
+  // from gpt 27.10.26
+  window.globalAlarmAudio.play().catch(() => {});
 
   // Локальна функція зупинки для повної сумісності з оригінальними кнопками Stop/Snooze
   const localStop = () => {
