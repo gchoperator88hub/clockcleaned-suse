@@ -5471,4 +5471,1055 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 
 
+
+<!-- ===== NEXT EVENT WIDGET: SPACING, LINE COLORS, VISIBLE DATE ===== -->
+<style id="next-event-final-css">
+  :root {
+    --nef-gap: 0px;
+    --nef-line1-color: inherit;
+    --nef-line2-color: inherit;
+    --nef-line3-color: inherit;
+    --nef-line4-color: inherit;
+  }
+
+  /* The four real widget lines: spacing is applied directly to each line. */
+  #pl-next > #pa-stopbtn,
+  #pl-next > .pl-nw-time,
+  #pl-next > .pl-nw-txt,
+  #pl-next > .pl-nw-cd {
+    margin-top: 0 !important;
+    margin-bottom: var(--nef-gap) !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+    flex-shrink: 0;
+  }
+
+  #pl-next > #pa-stopbtn {
+    font-size: var(--nef-line1, 14px) !important;
+    color: var(--nef-line1-color) !important;
+    line-height: 1.1 !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere !important;
+  }
+
+  #pl-next > .pl-nw-time {
+    font-size: var(--nef-line2, 34px) !important;
+    color: var(--nef-line2-color) !important;
+    line-height: 1.1 !important;
+  }
+
+  /* Keep the event date visible and the same size as the time line. */
+  #pl-next > .pl-nw-time small {
+    display: inline !important;
+    font-size: 1em !important;
+    color: inherit !important;
+    opacity: 1 !important;
+    white-space: normal !important;
+  }
+
+  #pl-next > .pl-nw-txt {
+    font-size: var(--nef-line3, 18px) !important;
+    color: var(--nef-line3-color) !important;
+    line-height: 1.1 !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    white-space: pre-wrap !important;
+    overflow-wrap: anywhere !important;
+    word-break: normal !important;
+  }
+
+  #pl-next > .pl-nw-cd {
+    font-size: var(--nef-line4, 17px) !important;
+    color: var(--nef-line4-color) !important;
+    line-height: 1.1 !important;
+  }
+
+  /* Fullscreen mode changes geometry only, not existing widget colors. */
+  #pl-next.nef-fullscreen {
+    position: fixed !important;
+    inset: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: none !important;
+    max-height: none !important;
+    box-sizing: border-box !important;
+    z-index: 2147483000 !important;
+    margin: 0 !important;
+    padding: 20px !important;
+    border-radius: 0 !important;
+    overflow: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: stretch !important;
+    gap: 0 !important;
+    row-gap: 0 !important;
+  }
+</style>
+
+<script id="next-event-final-script">
+(() => {
+  'use strict';
+  if (window.__nextEventFinalV2) return;
+  window.__nextEventFinalV2 = true;
+
+  const defaults = {
+    line1: '14',
+    line2: '34',
+    line3: '18',
+    line4: '17',
+    gap: '0',
+    color1: '#222222',
+    color2: '#222222',
+    color3: '#222222',
+    color4: '#222222'
+  };
+
+  const get = key => {
+    try {
+      const value = localStorage.getItem('nef-' + key);
+      return value === null ? defaults[key] : value;
+    } catch (_) {
+      return defaults[key];
+    }
+  };
+
+  const save = (key, value) => {
+    try {
+      localStorage.setItem('nef-' + key, value);
+    } catch (_) {}
+  };
+
+  const root = document.documentElement;
+
+  function apply() {
+    ['line1', 'line2', 'line3', 'line4'].forEach(key => {
+      const value = Math.max(8, Math.min(72, Number(get(key)) || Number(defaults[key])));
+      root.style.setProperty('--nef-' + key, value + 'px');
+    });
+
+    const gap = Math.max(0, Math.min(40, Number(get('gap')) || 0));
+    root.style.setProperty('--nef-gap', gap + 'px');
+
+    ['color1', 'color2', 'color3', 'color4'].forEach((key, i) => {
+      root.style.setProperty('--nef-line' + (i + 1) + '-color', get(key));
+    });
+  }
+
+  function addSettings() {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('nef-settings')) return;
+
+    const details = document.createElement('details');
+    details.id = 'nef-settings';
+    details.style.cssText =
+      'margin:12px 0;padding:10px;border-top:2px solid #6264a7';
+
+    details.innerHTML =
+      '<summary style="cursor:pointer;font-weight:bold;padding:6px 0">' +
+      'Параметри віджета найближчої події</summary>' +
+      '<div id="nef-controls" style="display:grid;' +
+      'grid-template-columns:minmax(160px,1fr) auto;' +
+      'gap:8px;align-items:center;margin-top:12px"></div>' +
+      '<button type="button" id="nef-reset" style="margin-top:10px">' +
+      'Скинути ці параметри</button>';
+
+    const host = document.getElementById('pl-settings-box') || panel;
+    host.appendChild(details);
+
+    const fields = [
+      ['line1', 'Рядок 1: кнопка нагадування, px', 'range', 8, 48],
+      ['line2', 'Рядок 2: час і дата, px', 'range', 8, 72],
+      ['line3', 'Рядок 3: опис події, px', 'range', 8, 48],
+      ['line4', 'Рядок 4: зворотний відлік, px', 'range', 8, 48],
+      ['gap', 'Проміжок МІЖ рядками, px (0 = впритул)', 'range', 0, 40],
+      ['color1', 'Колір тексту рядка 1', 'color'],
+      ['color2', 'Колір тексту рядка 2 (час і дата)', 'color'],
+      ['color3', 'Колір тексту рядка 3 (опис події)', 'color'],
+      ['color4', 'Колір тексту рядка 4 (відлік)', 'color']
+    ];
+
+    const holder = details.querySelector('#nef-controls');
+
+    fields.forEach(([key, label, type, min, max]) => {
+      const lab = document.createElement('label');
+      const input = document.createElement('input');
+
+      input.type = type;
+      input.id = 'nef-' + key;
+      input.value = get(key);
+
+      if (min !== undefined) input.min = min;
+      if (max !== undefined) input.max = max;
+      if (type === 'range') {
+        input.max = max;
+        input.min = min;
+        input.step = 1;
+        input.style.width = '145px';
+      }
+
+      lab.htmlFor = input.id;
+      lab.textContent = label;
+
+      const update = () => {
+        save(key, input.value);
+        apply();
+      };
+
+      input.addEventListener('input', update);
+      input.addEventListener('change', update);
+      holder.append(lab, input);
+    });
+
+    details.querySelector('#nef-reset').addEventListener('click', () => {
+      Object.keys(defaults).forEach(key => {
+        save(key, defaults[key]);
+        const input = document.getElementById('nef-' + key);
+        if (input) input.value = defaults[key];
+      });
+      apply();
+    });
+  }
+
+  let fullscreen = false;
+  let savedInlineStyle = null;
+
+  function widget() {
+    return document.getElementById('pl-next');
+  }
+
+  function stopButton() {
+    return document.getElementById('pa-stopbtn');
+  }
+
+  function enterFullscreen() {
+    const w = widget();
+    if (!w || fullscreen) return;
+
+    savedInlineStyle = w.getAttribute('style');
+    w.classList.add('nef-fullscreen');
+    fullscreen = true;
+  }
+
+  function leaveFullscreen() {
+    const w = widget();
+    if (!w || !fullscreen) return;
+
+    w.classList.remove('nef-fullscreen');
+
+    if (savedInlineStyle === null) {
+      w.removeAttribute('style');
+    } else {
+      w.setAttribute('style', savedInlineStyle);
+    }
+
+    savedInlineStyle = null;
+    fullscreen = false;
+  }
+
+  function sync() {
+    const w = widget();
+    const b = stopButton();
+    if (!w || !b) return;
+
+    /* Existing planner toggles .play when its melody is playing or blocked. */
+    if (b.classList.contains('play')) {
+      enterFullscreen();
+    } else {
+      leaveFullscreen();
+    }
+  }
+
+  function init() {
+    addSettings();
+    apply();
+
+    const observer = new MutationObserver(() => {
+      addSettings();
+      apply();
+      sync();
+    });
+
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'hidden']
+    });
+
+    window.addEventListener('pa:changed', sync);
+    window.addEventListener('pl:changed', sync);
+    sync();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();
+</script>
+<!-- ===== END NEXT EVENT WIDGET BLOCK ===== -->
+
+
+<!-- ===== FULL-YEAR NOTES + EVENTS VIEW ===== -->
+<style id="full-year-view-css">
+  #fy-open {
+    position: fixed;
+    z-index: 1800;
+    display: none;
+    padding: 2px 5px;
+    border: 1px solid #008000;
+    border-radius: 5px;
+    background: #00ff00;
+    color: #000;
+    font: 800 12px/1.2 "Segoe UI", sans-serif;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  #fy-menu {
+    position: fixed;
+    z-index: 10002;
+    display: none;
+    padding: 8px;
+    border: 1px solid #6264a7;
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 5px 18px #0004;
+  }
+
+  #fy-menu button {
+    display: block;
+    width: 100%;
+    margin: 3px 0;
+    padding: 7px 12px;
+    cursor: pointer;
+  }
+
+  #fy-window {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    display: none;
+    overflow: auto;
+    box-sizing: border-box;
+    padding: 12px;
+    background: var(--fy-bg, #fff);
+    color: var(--fy-text, #222);
+    font-family: "Segoe UI", sans-serif;
+  }
+
+  #fy-window.fy-open {
+    display: block;
+  }
+
+  #fy-toolbar {
+    position: sticky;
+    top: -12px;
+    z-index: 3;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px;
+    background: var(--fy-toolbar-bg, #eee);
+    border-bottom: 2px solid var(--fy-border, #999);
+  }
+
+  #fy-toolbar button {
+    padding: 6px 12px;
+    cursor: pointer;
+    font-weight: 700;
+  }
+
+  #fy-year-title {
+    color: var(--fy-title, #6264a7);
+    font-size: var(--fy-title-size, 24px);
+    font-weight: 900;
+  }
+
+  #fy-months {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--fy-month-gap, 10px);
+    padding-top: 10px;
+  }
+
+  .fy-month {
+    min-width: 0;
+    border: 1px solid var(--fy-border, #ccc);
+    border-radius: 7px;
+    padding: 5px;
+    background: var(--fy-month-bg, #fff);
+  }
+
+  .fy-month-title {
+    margin: 0 0 5px;
+    padding: 3px;
+    text-align: center;
+    color: var(--fy-month-title, #6264a7);
+    font-size: var(--fy-month-size, 16px);
+    font-weight: 900;
+  }
+
+  .fy-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--fy-day-gap, 2px);
+  }
+
+  .fy-weekday {
+    padding: 2px 0;
+    text-align: center;
+    color: var(--fy-weekday, #555);
+    font-size: var(--fy-weekday-size, 11px);
+    font-weight: 800;
+  }
+
+  .fy-day {
+    position: relative;
+    min-width: 0;
+    min-height: var(--fy-day-height, 30px);
+    padding: 2px 0;
+    border: 1px solid var(--fy-border, #ddd);
+    border-radius: 3px;
+    background: var(--fy-day-bg, #fff);
+    color: var(--fy-day-text, #222);
+    font-size: var(--fy-day-size, 12px);
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .fy-day.fy-note {
+    background: var(--fy-note-bg, #ffeb3b);
+    color: var(--fy-note-text, #111);
+  }
+
+  .fy-day.fy-event {
+    box-shadow: inset 0 -4px 0 var(--fy-event-color, #e91e63);
+  }
+
+  .fy-day.fy-note.fy-event {
+    box-shadow: inset 0 -4px 0 var(--fy-event-color, #e91e63);
+  }
+
+  .fy-day.fy-today {
+    outline: 2px solid var(--fy-today, #f00);
+    outline-offset: -2px;
+  }
+
+  .fy-day:hover {
+    filter: brightness(.9);
+  }
+
+  .fy-day.fy-empty {
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  .fy-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 8px 0;
+    font-size: var(--fy-legend-size, 12px);
+  }
+
+  #fy-settings {
+    margin-top: 10px;
+    padding: 10px;
+    border: 1px solid var(--fy-border, #aaa);
+    background: var(--fy-month-bg, #fff);
+  }
+
+  #fy-settings summary {
+    cursor: pointer;
+    font-weight: 800;
+  }
+
+  #fy-settings-grid {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+  }
+
+  #fy-settings-grid input[type="range"] {
+    width: 130px;
+  }
+
+  #fy-settings-grid input[type="color"] {
+    width: 38px;
+    height: 28px;
+  }
+
+  @media (max-width: 900px) {
+    #fy-months {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 600px) {
+    #fy-months {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+</style>
+
+<script id="full-year-view-script">
+(() => {
+  'use strict';
+
+  if (window.__fullYearNotesEventsV1) return;
+  window.__fullYearNotesEventsV1 = true;
+
+  const MONTHS = [
+    'Січень', 'Лютий', 'Березень', 'Квітень',
+    'Травень', 'Червень', 'Липень', 'Серпень',
+    'Вересень', 'Жовтень', 'Листопад', 'Грудень'
+  ];
+  const DAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Нд'];
+
+  const get = key => {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  };
+
+  const set = (key, value) => {
+    try { localStorage.setItem(key, value); } catch (_) {}
+  };
+
+  const esc = value => String(value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;',
+    '"': '&quot;', "'": '&#39;'
+  }[ch]));
+
+  const DEFAULTS = {
+    bg: '#ffffff',
+    text: '#222222',
+    toolbarBg: '#eeeeee',
+    title: '#6264a7',
+    monthTitle: '#6264a7',
+    monthBg: '#ffffff',
+    dayBg: '#ffffff',
+    dayText: '#222222',
+    noteBg: '#ffeb3b',
+    noteText: '#111111',
+    eventColor: '#e91e63',
+    weekday: '#555555',
+    border: '#cccccc',
+    today: '#ff0000',
+    titleSize: 24,
+    monthSize: 16,
+    daySize: 12,
+    weekdaySize: 11,
+    dayHeight: 30,
+    monthGap: 10,
+    dayGap: 2
+  };
+
+  const CSS_NAMES = {
+    bg: '--fy-bg',
+    text: '--fy-text',
+    toolbarBg: '--fy-toolbar-bg',
+    title: '--fy-title',
+    monthTitle: '--fy-month-title',
+    monthBg: '--fy-month-bg',
+    dayBg: '--fy-day-bg',
+    dayText: '--fy-day-text',
+    noteBg: '--fy-note-bg',
+    noteText: '--fy-note-text',
+    eventColor: '--fy-event-color',
+    weekday: '--fy-weekday',
+    border: '--fy-border',
+    today: '--fy-today',
+    titleSize: '--fy-title-size',
+    monthSize: '--fy-month-size',
+    daySize: '--fy-day-size',
+    weekdaySize: '--fy-weekday-size',
+    dayHeight: '--fy-day-height',
+    monthGap: '--fy-month-gap',
+    dayGap: '--fy-day-gap'
+  };
+
+  const readSetting = key => {
+    const saved = get('fyv-' + key);
+    return saved === null ? String(DEFAULTS[key]) : saved;
+  };
+
+  function applySettings() {
+    const root = document.documentElement;
+    Object.keys(CSS_NAMES).forEach(key => {
+      const value = readSetting(key);
+      const unit = key.endsWith('Size') || key === 'dayHeight' ||
+        key === 'monthGap' || key === 'dayGap' ? 'px' : '';
+      root.style.setProperty(CSS_NAMES[key], value + unit);
+    });
+  }
+
+  function getNotes() {
+    try {
+      return JSON.parse(get('calendar_notes') || '{}') || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function getEvents() {
+    try {
+      return JSON.parse(get('calendar_planner') || '{}') || {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function dateKey(y, m, d) {
+    return y + '-' + m + '-' + d;
+  }
+
+  function eventsForDate(events, y, m, d) {
+    const day = events[dateKey(y, m, d)];
+    if (!day || typeof day !== 'object') return [];
+
+    return Object.keys(day)
+      .map(slot => ({
+        slot: Number(slot),
+        text: String(day[slot] || '').trim()
+      }))
+      .filter(e => Number.isInteger(e.slot) && e.slot >= 0 &&
+        e.slot <= 47 && e.text)
+      .sort((a, b) => a.slot - b.slot);
+  }
+
+  function timeOfSlot(slot) {
+    return String(Math.floor(slot / 2)).padStart(2, '0') +
+      ':' + (slot % 2 ? '30' : '00');
+  }
+
+  let selectedYear = new Date().getFullYear();
+  let lastRenderSignature = '';
+
+  const openButton = document.createElement('button');
+  openButton.id = 'fy-open';
+  openButton.type = 'button';
+  openButton.textContent = 'Рік нотаток';
+
+  const menu = document.createElement('div');
+  menu.id = 'fy-menu';
+  menu.innerHTML = `
+    <button type="button" data-year="prev">Попередній рік</button>
+    <button type="button" data-year="current">Поточний рік</button>
+    <button type="button" data-year="next">Наступний рік</button>`;
+
+  const win = document.createElement('section');
+  win.id = 'fy-window';
+  win.setAttribute('aria-label', 'Річний календар нотаток і подій');
+  win.innerHTML = `
+    <div id="fy-toolbar">
+      <button type="button" id="fy-close">Закрити ✕</button>
+      <button type="button" id="fy-prev">‹ Рік</button>
+      <strong id="fy-year-title"></strong>
+      <button type="button" id="fy-next">Рік ›</button>
+      <button type="button" id="fy-settings-toggle">Налаштування</button>
+    </div>
+    <div class="fy-legend">
+      <span>🟨 День із нотаткою</span>
+      <span>🟪 Нижня смужка — подія</span>
+      <span>🔴 Рамка — сьогодні</span>
+    </div>
+    <details id="fy-settings">
+      <summary>Розміри й кольори річного календаря</summary>
+      <div id="fy-settings-grid"></div>
+      <button type="button" id="fy-reset">Скинути параметри вікна</button>
+    </details>
+    <div id="fy-months"></div>`;
+
+  document.body.append(openButton, menu, win);
+
+  const monthHost = win.querySelector('#fy-months');
+  const yearTitle = win.querySelector('#fy-year-title');
+
+  function renderSettings() {
+    const host = win.querySelector('#fy-settings-grid');
+    const fields = [
+      ['titleSize', 'Розмір заголовка року', 'range', 12, 48],
+      ['monthSize', 'Розмір назв місяців', 'range', 10, 32],
+      ['daySize', 'Розмір чисел днів', 'range', 8, 24],
+      ['weekdaySize', 'Розмір назв днів тижня', 'range', 8, 20],
+      ['dayHeight', 'Висота клітинки дня, px', 'range', 18, 60],
+      ['monthGap', 'Проміжок між місяцями, px', 'range', 0, 30],
+      ['dayGap', 'Проміжок між днями, px', 'range', 0, 10],
+      ['bg', 'Фон вікна', 'color'],
+      ['toolbarBg', 'Фон верхньої панелі', 'color'],
+      ['text', 'Основний текст', 'color'],
+      ['title', 'Колір заголовка року', 'color'],
+      ['monthTitle', 'Колір назв місяців', 'color'],
+      ['monthBg', 'Фон місяців', 'color'],
+      ['dayBg', 'Фон звичайних днів', 'color'],
+      ['dayText', 'Текст звичайних днів', 'color'],
+      ['noteBg', 'Фон дня з нотаткою', 'color'],
+      ['noteText', 'Текст дня з нотаткою', 'color'],
+      ['eventColor', 'Колір позначки події', 'color'],
+      ['weekday', 'Колір днів тижня', 'color'],
+      ['border', 'Колір рамок', 'color'],
+      ['today', 'Рамка поточного дня', 'color']
+    ];
+
+    host.innerHTML = '';
+
+    fields.forEach(([key, label, type, min, max]) => {
+      const lab = document.createElement('label');
+      const input = document.createElement('input');
+      input.type = type;
+      input.id = 'fyv-' + key;
+      input.value = readSetting(key);
+
+      if (type === 'range') {
+        input.min = min;
+        input.max = max;
+        input.step = 1;
+      }
+
+      lab.htmlFor = input.id;
+      lab.textContent = label;
+      host.append(lab, input);
+    });
+
+    host.addEventListener('input', handleSettings);
+    host.addEventListener('change', handleSettings);
+  }
+
+  function handleSettings(e) {
+    const input = e.target;
+    if (!input.id || !input.id.startsWith('fyv-')) return;
+    const key = input.id.slice(4);
+    if (!(key in DEFAULTS)) return;
+
+    set('fyv-' + key, input.value);
+    applySettings();
+  }
+
+  function openNote(y, m, d) {
+    window.dispatchEvent(new CustomEvent('mw:open-note', {
+      detail: {
+        key: dateKey(y, m, d),
+        label: d + ' ' + MONTHS[m] + ' ' + y
+      }
+    }));
+  }
+
+  function renderYear() {
+    const notes = getNotes();
+    const events = getEvents();
+    const today = new Date();
+
+    yearTitle.textContent = 'Нотатки та події — ' + selectedYear;
+
+    let html = '';
+
+    for (let m = 0; m < 12; m++) {
+      const firstOffset = (new Date(selectedYear, m, 1).getDay() + 6) % 7;
+      const daysInMonth = new Date(selectedYear, m + 1, 0).getDate();
+
+      html += '<article class="fy-month">';
+      html += '<h3 class="fy-month-title">' + MONTHS[m] + '</h3>';
+      html += '<div class="fy-grid">';
+
+      DAYS.forEach(day => {
+        html += '<div class="fy-weekday">' + day + '</div>';
+      });
+
+      for (let i = 0; i < firstOffset; i++) {
+        html += '<div class="fy-day fy-empty"></div>';
+      }
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const key = dateKey(selectedYear, m, d);
+        const note = String(notes[key] || '').trim();
+        const dayEvents = eventsForDate(events, selectedYear, m, d);
+        const isToday = today.getFullYear() === selectedYear &&
+          today.getMonth() === m && today.getDate() === d;
+
+        const classes = [
+          'fy-day',
+          note ? 'fy-note' : '',
+          dayEvents.length ? 'fy-event' : '',
+          isToday ? 'fy-today' : ''
+        ].filter(Boolean).join(' ');
+
+        const tooltip = [
+          note ? 'Нотатка: ' + note : '',
+          ...dayEvents.map(e => timeOfSlot(e.slot) + ' ' + e.text)
+        ].filter(Boolean).join('\n');
+
+        html += '<button type="button" class="' + classes +
+          '" data-month="' + m + '" data-day="' + d +
+          '" title="' + esc(tooltip) + '">' + d + '</button>';
+      }
+
+      html += '</div></article>';
+    }
+
+    monthHost.innerHTML = html;
+    applySettings();
+  }
+
+  function positionButton() {
+    /* Locate the existing red year button by its four-digit label. */
+    const candidates = [...document.querySelectorAll('button, div, span')];
+    const yearButton = candidates.find(el => {
+      if (el.id === 'fy-open' || !/^\d{4}$/.test((el.textContent || '').trim()))
+        return false;
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return r.width > 20 && r.height > 15 && s.display !== 'none' &&
+        r.left < window.innerWidth * 0.12 && r.top < 120;
+    });
+
+    if (!yearButton) {
+      openButton.style.display = 'none';
+      return;
+    }
+
+    const yearRect = yearButton.getBoundingClientRect();
+    openButton.style.display = 'block';
+    openButton.style.left = Math.max(0, yearRect.left) + 'px';
+    openButton.style.top = (yearRect.bottom + 4) + 'px';
+    openButton.style.width = Math.max(48, yearRect.width) + 'px';
+    openButton.style.height = Math.max(24, yearRect.height - 4) + 'px';
+  }
+
+  openButton.addEventListener('click', () => {
+    const r = openButton.getBoundingClientRect();
+    menu.style.left = Math.max(4, Math.min(r.left, innerWidth - 180)) + 'px';
+    menu.style.top = Math.min(r.bottom + 3, innerHeight - 130) + 'px';
+    menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+  });
+
+  menu.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-year]');
+    if (!btn) return;
+
+    const current = new Date().getFullYear();
+    selectedYear = btn.dataset.year === 'prev' ? current - 1 :
+      btn.dataset.year === 'next' ? current + 1 : current;
+
+    menu.style.display = 'none';
+    renderYear();
+    win.classList.add('fy-open');
+    document.body.style.overflow = 'hidden';
+  });
+
+  win.querySelector('#fy-close').addEventListener('click', () => {
+    win.classList.remove('fy-open');
+    document.body.style.overflow = '';
+  });
+
+  win.querySelector('#fy-prev').addEventListener('click', () => {
+    selectedYear--;
+    renderYear();
+  });
+
+  win.querySelector('#fy-next').addEventListener('click', () => {
+    selectedYear++;
+    renderYear();
+  });
+
+  win.querySelector('#fy-settings-toggle').addEventListener('click', () => {
+    const details = win.querySelector('#fy-settings');
+    details.open = !details.open;
+  });
+
+  win.querySelector('#fy-reset').addEventListener('click', () => {
+    Object.keys(DEFAULTS).forEach(key => {
+      set('fyv-' + key, String(DEFAULTS[key]));
+    });
+    renderSettings();
+    applySettings();
+    renderYear();
+  });
+
+  monthHost.addEventListener('click', e => {
+    const dayButton = e.target.closest('.fy-day[data-day]');
+    if (!dayButton) return;
+
+    const m = Number(dayButton.dataset.month);
+    const d = Number(dayButton.dataset.day);
+    if (!Number.isInteger(m) || !Number.isInteger(d)) return;
+
+    openNote(selectedYear, m, d);
+  });
+
+  window.addEventListener('mw:open-note', () => {
+    /* Keep the year view behind the existing note editor. */
+  });
+
+  window.addEventListener('storage', e => {
+    if (e.key === 'calendar_notes' || e.key === 'calendar_planner') {
+      if (win.classList.contains('fy-open')) renderYear();
+    }
+  });
+
+  renderSettings();
+  applySettings();
+
+  window.addEventListener('resize', positionButton);
+  window.addEventListener('scroll', positionButton, true);
+
+  setTimeout(positionButton, 500);
+  setTimeout(positionButton, 1500);
+  setTimeout(positionButton, 3000);
+  setInterval(positionButton, 5000);
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && win.classList.contains('fy-open')) {
+      win.classList.remove('fy-open');
+      document.body.style.overflow = '';
+    }
+  });
+})();
+</script>
+<!-- ===== END FULL-YEAR NOTES + EVENTS VIEW ===== -->
+
+
+<!-- ===== YEAR CALENDAR: SINGLE FULL EDITOR, CORRECT NOTE LOADING ===== -->
+<style id="fy-editor-bridge-css">
+  #fy-open {
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    padding: 2px 4px !important;
+    font-size: 12px !important;
+    line-height: 1.1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+</style>
+
+<script id="fy-editor-bridge">
+(() => {
+  'use strict';
+
+  if (window.__fyEditorBridgeCorrected) return;
+  window.__fyEditorBridgeCorrected = true;
+
+  const $ = selector => document.querySelector(selector);
+
+  function openFullEditor(key) {
+    const parts = String(key).split('-').map(Number);
+    if (parts.length !== 3 ||
+        !parts.every(Number.isFinite)) return;
+
+    const [year, month, day] = parts;
+    if (month < 0 || month > 11 ||
+        day < 1 ||
+        day > new Date(year, month + 1, 0).getDate()) return;
+
+    const modal = $('#day-modal');
+    const title = $('#day-modal-title');
+    const textarea = $('#day-note-text');
+
+    if (!modal || !title || !textarea) {
+      console.error('[Year calendar] Full editor elements were not found.');
+      return;
+    }
+
+    // Use the same date key and loading method as the existing app.
+    const dateKey = `${year}-${month}-${day}`;
+    window.customActiveWeekDate = dateKey;
+
+    title.textContent =
+      `${String(day).padStart(2, '0')}.` +
+      `${String(month + 1).padStart(2, '0')}.` +
+      `${year}`;
+
+    try {
+      const notes = JSON.parse(
+        localStorage.getItem('calendar_notes') || '{}'
+      ) || {};
+      textarea.value = notes[dateKey] || '';
+    } catch (error) {
+      console.error('[Year calendar] Could not read saved note:', error);
+      textarea.value = '';
+    }
+
+    // Hide the year view behind the one full editor.
+    const yearWindow = $('#fy-window');
+    if (yearWindow) yearWindow.classList.remove('fy-open');
+
+    // The original planner integration supplies both tabs.
+    modal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function install() {
+    const yearWindow = $('#fy-window');
+    const openButton = $('#fy-open');
+
+    if (openButton) {
+      openButton.textContent = 'Рік';
+      openButton.title = 'Річний календар нотаток і подій';
+    }
+
+    if (!yearWindow || yearWindow.dataset.fullEditorBridge === '1') return;
+    yearWindow.dataset.fullEditorBridge = '1';
+
+    /*
+      Intercept clicks on actual year-calendar day buttons in capture phase.
+      Read the year/month/day from the clicked button or its containing month.
+      Prevent the old handler from opening the text-only editor as well.
+    */
+    yearWindow.addEventListener('click', event => {
+      const dayButton = event.target.closest('button');
+      if (!dayButton || !yearWindow.contains(dayButton)) return;
+
+      const rawDay = dayButton.dataset.day;
+      if (!rawDay || !/^\d{1,2}$/.test(rawDay)) return;
+
+      const monthContainer = dayButton.closest(
+        '[data-month], .fy-month, .fy-month-card'
+      );
+
+      let monthValue = monthContainer?.dataset.month;
+      if (monthValue == null) {
+        monthValue = dayButton.dataset.month;
+      }
+      if (monthValue == null || !/^\d{1,2}$/.test(String(monthValue))) return;
+
+      const month = Number(monthValue);
+      const day = Number(rawDay);
+
+      const yearTitle = $('#fy-year-title');
+      const titleMatch = (yearTitle?.textContent || '').match(/\b(19|20)\d{2}\b/);
+      const yearWindowTitle = (yearWindow.textContent || '').match(/\b(19|20)\d{2}\b/);
+      const year = Number(
+        titleMatch?.[0] || yearWindowTitle?.[0] || new Date().getFullYear()
+      );
+
+      // Ignore non-day buttons and invalid month/day combinations.
+      if (month < 0 || month > 11 ||
+          day < 1 || day > new Date(year, month + 1, 0).getDate()) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+
+      openFullEditor(`${year}-${month}-${day}`);
+    }, true);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  } else {
+    install();
+  }
+})();
+</script>
+<!-- ===== END YEAR CALENDAR EDITOR BRIDGE ===== -->
+
+
 </html>
