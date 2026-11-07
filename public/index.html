@@ -6522,4 +6522,392 @@ window.addEventListener('DOMContentLoaded', () => {
 <!-- ===== END YEAR CALENDAR EDITOR BRIDGE ===== -->
 
 
+<!-- ===== YEAR CALENDAR: DAY SIZE + TODAY FRAME + EVENT MARKER THICKNESS ===== -->
+<style id="fy-day-display-settings-css">
+  #fy-window {
+    --fy-day-number-size: 20px;
+    --fy-today-frame-width: 4px;
+    --fy-event-marker-thickness: 4px;
+  }
+
+  #fy-window .fy-day {
+    font-size: var(--fy-day-number-size) !important;
+  }
+
+  /* Preserve the existing event-marker color and make its thickness adjustable. */
+  #fy-window .fy-day.fy-event,
+  #fy-window .fy-day.fy-note.fy-event {
+    box-shadow:
+      inset 0 calc(0px - var(--fy-event-marker-thickness, 4px))
+      0 var(--fy-event-marker-thickness, 4px)
+      var(--fy-event-color, #e91e63) !important;
+  }
+
+  /* The frame is independent of the event marker. */
+  #fy-window .fy-day.fy-today,
+  #fy-window .fy-day.today,
+  #fy-window .fy-day.is-today,
+  #fy-window .fy-day[aria-current="date"] {
+    outline: var(--fy-today-frame-width, 4px)
+      solid var(--fy-today, #ff0000) !important;
+    outline-offset: calc(0px - var(--fy-today-frame-width, 4px)) !important;
+  }
+</style>
+
+<script id="fy-day-display-settings">
+(() => {
+  'use strict';
+
+  if (window.__fyDayDisplaySettingsV2) return;
+  window.__fyDayDisplaySettingsV2 = true;
+
+  const STORAGE_KEY = 'fy-day-display-settings-v2';
+  const DEFAULTS = {
+    numberSize: 28,
+    todayFrame: 4,
+    eventThickness: 4
+  };
+
+  function clamp(value, min, max, fallback) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.max(min, Math.min(max, n)) : fallback;
+  }
+
+  function loadSettings() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+      return {
+        numberSize: clamp(saved.numberSize, 10, 60, DEFAULTS.numberSize),
+        todayFrame: clamp(saved.todayFrame, 1, 20, DEFAULTS.todayFrame),
+        eventThickness: clamp(
+          saved.eventThickness, 1, 100, DEFAULTS.eventThickness
+        )
+      };
+    } catch (_) {
+      return { ...DEFAULTS };
+    }
+  }
+
+  let settings = loadSettings();
+  let observer = null;
+
+  function applySettings() {
+    const root = document.getElementById('fy-window');
+    if (!root) return;
+
+    root.style.setProperty(
+      '--fy-day-number-size', settings.numberSize + 'px'
+    );
+    root.style.setProperty(
+      '--fy-today-frame-width', settings.todayFrame + 'px'
+    );
+    root.style.setProperty(
+      '--fy-event-marker-thickness', settings.eventThickness + 'px'
+    );
+  }
+
+  function saveSettings() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    } catch (error) {
+      console.warn('[Year calendar settings] Could not save settings:', error);
+    }
+    applySettings();
+  }
+
+  function addControls() {
+    const yearWindow = document.getElementById('fy-window');
+    if (!yearWindow || document.getElementById('fy-day-display-panel')) return;
+
+    const panel = document.createElement('details');
+    panel.id = 'fy-day-display-panel';
+    panel.open = true;
+    panel.style.cssText =
+      'position:sticky;top:0;z-index:10000;' +
+      'background:#eee;color:#222;padding:8px 12px;margin:4px 0;' +
+      'border:1px solid #888;border-radius:6px;font-size:13px;';
+
+    panel.innerHTML = `
+      <summary style="cursor:pointer;font-weight:bold">
+        Розмір дат, рамка сьогодні та маркер події
+      </summary>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;padding-top:10px">
+        <label>
+          Числа днів: <strong id="fy-day-size-value"></strong><br>
+          <input id="fy-day-size-range" type="range"
+            min="10" max="60" step="1">
+        </label>
+
+        <label>
+          Товщина рамки сьогодні: <strong id="fy-today-frame-value"></strong><br>
+          <input id="fy-today-frame-range" type="range"
+            min="1" max="20" step="1">
+        </label>
+
+        <label>
+          Товщина маркера події: <strong id="fy-event-thickness-value"></strong><br>
+          <input id="fy-event-thickness-range" type="range"
+            min="1" max="100" step="1" style="width:220px">
+        </label>
+
+        <button id="fy-day-display-reset" type="button">
+          За замовчуванням
+        </button>
+      </div>
+    `;
+
+    yearWindow.insertBefore(panel, yearWindow.firstChild);
+
+    const numberInput = panel.querySelector('#fy-day-size-range');
+    const frameInput = panel.querySelector('#fy-today-frame-range');
+    const eventInput = panel.querySelector('#fy-event-thickness-range');
+
+    const numberValue = panel.querySelector('#fy-day-size-value');
+    const frameValue = panel.querySelector('#fy-today-frame-value');
+    const eventValue = panel.querySelector('#fy-event-thickness-value');
+
+    function syncControls() {
+      numberInput.value = settings.numberSize;
+      frameInput.value = settings.todayFrame;
+      eventInput.value = settings.eventThickness;
+
+      numberValue.textContent = settings.numberSize + ' px';
+      frameValue.textContent = settings.todayFrame + ' px';
+      eventValue.textContent = settings.eventThickness + ' px';
+    }
+
+    numberInput.addEventListener('input', () => {
+      settings.numberSize = clamp(numberInput.value, 10, 60, DEFAULTS.numberSize);
+      syncControls();
+      saveSettings();
+    });
+
+    frameInput.addEventListener('input', () => {
+      settings.todayFrame = clamp(frameInput.value, 1, 20, DEFAULTS.todayFrame);
+      syncControls();
+      saveSettings();
+    });
+
+    eventInput.addEventListener('input', () => {
+      settings.eventThickness = clamp(
+        eventInput.value, 1, 100, DEFAULTS.eventThickness
+      );
+      syncControls();
+      saveSettings();
+    });
+
+    panel.querySelector('#fy-day-display-reset').addEventListener('click', () => {
+      settings = { ...DEFAULTS };
+      syncControls();
+      saveSettings();
+    });
+
+    syncControls();
+  }
+
+  function init() {
+    addControls();
+    applySettings();
+
+    if (observer) observer.disconnect();
+
+    observer = new MutationObserver(() => {
+      addControls();
+      applySettings();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();
+</script>
+<!-- ===== END YEAR CALENDAR DISPLAY SETTINGS ===== -->
+
+<!-- Additional reminder button controls -->
+<style>
+#pa-stopbtn {
+  -webkit-text-stroke: var(--rb-stroke, 0px) currentColor !important;
+}
+#pa-stopbtn .rb-time {
+  font-size: 2em !important;
+  font-weight: 1000 !important;
+}
+</style>
+
+<script>
+(() => {
+  const key = 'rb-thickness';
+
+  function init() {
+    const box = document.querySelector('#nef-settings #nef-controls');
+
+    if (box && !document.getElementById('rb-thickness')) {
+      const row = document.createElement('label');
+      row.style.display = 'block';
+      row.style.marginTop = '8px';
+      row.textContent = 'Товщина шрифту кнопки нагадування: ';
+
+      const slider = document.createElement('input');
+      slider.id = 'rb-thickness';
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '12';
+      slider.step = '0.25';
+
+      const value = document.createElement('b');
+      row.append(slider, value);
+      box.appendChild(row);
+
+      slider.value = localStorage.getItem(key) || '0';
+
+      slider.oninput = () => {
+        document.documentElement.style.setProperty(
+          '--rb-stroke', slider.value + 'px'
+        );
+        value.textContent = ' ' + slider.value + ' px';
+        localStorage.setItem(key, slider.value);
+      };
+
+      slider.oninput();
+    }
+
+    const btn = document.getElementById('pa-stopbtn');
+
+    if (btn && !btn.querySelector('.rb-time')) {
+      const txt = btn.textContent;
+      const match = txt.match(/\b\d{1,2}:\d{2}\b/);
+
+      if (match) {
+        const i = match.index;
+        const time = document.createElement('span');
+        time.className = 'rb-time';
+        time.textContent = match[0];
+
+        btn.replaceChildren(
+          document.createTextNode(txt.slice(0, i)),
+          time,
+          document.createTextNode(txt.slice(i + match[0].length))
+        );
+      }
+    }
+  }
+
+  new MutationObserver(init).observe(document.body, {
+    childList: true,
+    characterData: true,
+    subtree: true
+  });
+
+  init();
+})();
+</script>
+<!-- End additional reminder button controls -->
+
+
+<!-- TABLE GRID: adjustable thickness and color -->
+<style id="table-grid-custom-style">
+  .cell {
+    border-bottom-width: var(--table-grid-w, 2px) !important;
+    border-bottom-color: var(--table-grid-c, #000000) !important;
+  }
+
+  .cell::after {
+    border-top-width: var(--table-grid-w, 2px) !important;
+    border-top-color: var(--table-grid-c, #000000) !important;
+  }
+
+  .time-sidebar,
+  .day-column {
+    border-right-width: var(--table-grid-w, 2px) !important;
+    border-right-color: var(--table-grid-c, #000000) !important;
+  }
+
+  .grid-hdr {
+    border-bottom-width: var(--table-grid-w, 2px) !important;
+    border-bottom-color: var(--table-grid-c, #000000) !important;
+  }
+
+  .hdr-cell {
+    border-right-width: var(--table-grid-w, 2px) !important;
+    border-right-color: var(--table-grid-c, #000000) !important;
+  }
+</style>
+
+<script>
+(() => {
+  const ready = fn =>
+    document.readyState === 'loading'
+      ? document.addEventListener('DOMContentLoaded', fn)
+      : fn();
+
+  ready(() => {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('table-grid-controls')) return;
+
+    const widthKey = 'table-grid-width';
+    const colorKey = 'table-grid-color';
+
+    const savedWidth = localStorage.getItem(widthKey) || '2';
+    const savedColor = localStorage.getItem(colorKey) || '#000000';
+
+    const apply = (width, color) => {
+      document.documentElement.style.setProperty('--table-grid-w', width + 'px');
+      document.documentElement.style.setProperty('--table-grid-c', color);
+    };
+
+    const box = document.createElement('div');
+    box.id = 'table-grid-controls';
+    box.style.cssText =
+      'border-top:1px solid #ccc;padding:12px 0;margin-top:12px;';
+
+    box.innerHTML = `
+      <h3 style="margin:0 0 10px">Сітка всієї таблиці</h3>
+      <div style="margin:8px 0">
+        Товщина ліній:
+        <input id="table-grid-width" type="range"
+          min="1" max="8" step="0.5" style="width:150px">
+        <b id="table-grid-width-value"></b>
+      </div>
+      <div style="margin:8px 0">
+        Колір ліній:
+        <input id="table-grid-color" type="color">
+      </div>
+    `;
+
+    panel.appendChild(box);
+
+    const width = box.querySelector('#table-grid-width');
+    const widthValue = box.querySelector('#table-grid-width-value');
+    const color = box.querySelector('#table-grid-color');
+
+    width.value = savedWidth;
+    color.value = savedColor;
+
+    apply(savedWidth, savedColor);
+    widthValue.textContent = savedWidth + ' px';
+
+    width.addEventListener('input', () => {
+      widthValue.textContent = width.value + ' px';
+      localStorage.setItem(widthKey, width.value);
+      apply(width.value, color.value);
+    });
+
+    color.addEventListener('input', () => {
+      localStorage.setItem(colorKey, color.value);
+      apply(width.value, color.value);
+    });
+  });
+})();
+</script>
+<!-- END TABLE GRID CONTROLS -->
+
+
 </html>
