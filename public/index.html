@@ -6910,4 +6910,391 @@ window.addEventListener('DOMContentLoaded', () => {
 <!-- END TABLE GRID CONTROLS -->
 
 
+
+<!-- GLOBAL SEARCH V2: notes and planner events -->
+<style id="global-search-v2-css">
+  .gs2-panel {
+    display: none;
+    flex: 1 1 auto;
+    min-height: 0;
+    flex-direction: column;
+    gap: 12px;
+    padding: 14px;
+    box-sizing: border-box;
+    overflow: hidden;
+    background: #fff;
+    color: #111;
+    border: 1px solid #aaa;
+    border-radius: 5px;
+  }
+  .gs2-panel.gs2-active { display: flex; }
+
+  .gs2-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 12px;
+    font-size: 19px;
+  }
+
+  .gs2-status {
+    font-size: 17px;
+    color: #555;
+    flex: 0 0 auto;
+  }
+
+  .gs2-results {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .gs2-result {
+    display: block;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #aaa;
+    border-radius: 5px;
+    background: #f7f7f7;
+    color: #111;
+    text-align: left;
+    font-size: 16px;
+    cursor: pointer;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .gs2-result:hover {
+    background: #e6e9ff;
+    border-color: #6264a7;
+  }
+
+  .gs2-meta {
+    display: block;
+    margin-bottom: 5px;
+    color: #6264a7;
+    font-weight: 800;
+  }
+
+  .gs2-result-text {
+    display: block;
+    white-space: pre-wrap;
+  }
+
+  #day-modal[data-pl-mode="gs2-search"] #day-note-text,
+  #day-modal[data-pl-mode="gs2-search"] .pl-plan,
+  #mw-note-modal[data-pl-mode="gs2-search"] textarea,
+  #mw-note-modal[data-pl-mode="gs2-search"] .pl-plan {
+    display: none !important;
+  }
+
+  #day-modal[data-pl-mode="gs2-search"] .gs2-panel,
+  #mw-note-modal[data-pl-mode="gs2-search"] .gs2-panel {
+    display: flex;
+  }
+
+  .pl-bar .gs2-tab {
+    cursor: pointer;
+    font-weight: 800;
+  }
+</style>
+
+<script id="global-search-v2">
+(() => {
+  'use strict';
+
+  if (window.__globalSearchV2) return;
+  window.__globalSearchV2 = true;
+
+  const NOTES_KEY = 'calendar_notes';
+  const EVENTS_KEY = 'calendar_planner';
+
+  const read = key => {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '{}');
+      return value && typeof value === 'object' ? value : {};
+    } catch (e) {
+      console.error('[Search] Cannot read ' + key, e);
+      return {};
+    }
+  };
+
+  const normalize = value =>
+    String(value || '').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+
+  const pad = n => String(n).padStart(2, '0');
+
+  function dateText(key) {
+    const p = key.split('-').map(Number);
+    if (p.length !== 3 || p.some(n => !Number.isFinite(n))) return key;
+    return pad(p[2]) + '.' + pad(p[1] + 1) + '.' + p[0];
+  }
+
+  function timeText(slot) {
+    const n = Number(slot);
+    return pad(Math.floor(n / 2)) + ':' + (n % 2 ? '30' : '00');
+  }
+
+  // Search every saved note and every saved 30-minute event.
+  // The entered phrase must occur continuously in the text.
+  function searchAll(query) {
+    const phrase = normalize(query);
+    if (!phrase) return [];
+
+    const notes = read(NOTES_KEY);
+    const events = read(EVENTS_KEY);
+    const found = [];
+
+    Object.entries(notes).forEach(([key, value]) => {
+      if (typeof value !== 'string' || !value.trim()) return;
+
+      if (normalize(value).includes(phrase)) {
+        found.push({
+          key,
+          type: 'note',
+          slot: null,
+          text: value
+        });
+      }
+    });
+
+    Object.entries(events).forEach(([key, day]) => {
+      if (!day || typeof day !== 'object' || Array.isArray(day)) return;
+
+      Object.entries(day).forEach(([slot, value]) => {
+        if (typeof value !== 'string' || !value.trim()) return;
+
+        if (normalize(value).includes(phrase)) {
+          const n = Number(slot);
+          if (!Number.isInteger(n) || n < 0 || n > 47) return;
+
+          found.push({
+            key,
+            type: 'event',
+            slot: n,
+            text: value
+          });
+        }
+      });
+    });
+
+    found.sort((a, b) =>
+      a.key.localeCompare(b.key) ||
+      (a.slot ?? -1) - (b.slot ?? -1)
+    );
+
+    return found;
+  }
+
+  function openSavedResult(result) {
+    const modal = document.getElementById('day-modal');
+    const title = document.getElementById('day-modal-title');
+    const textarea = document.getElementById('day-note-text');
+
+    if (!modal || !title || !textarea) {
+      alert('Не знайдено основне вікно редактора дня.');
+      return;
+    }
+
+    // Close both possible editors first.
+    modal.classList.remove('open');
+    document.getElementById('mw-note-modal')?.classList.remove('open');
+
+    // Allow the original Planner MutationObserver to detect a real reopening.
+    setTimeout(() => {
+      const p = result.key.split('-').map(Number);
+
+      if (p.length !== 3 || p.some(n => !Number.isFinite(n))) {
+        alert('Неправильна дата результату.');
+        return;
+      }
+
+      // Load the original saved note for this exact date.
+      const notes = read(NOTES_KEY);
+      window.customActiveWeekDate = result.key;
+
+      title.textContent =
+        pad(p[2]) + '.' + pad(p[1] + 1) + '.' + p[0];
+
+      textarea.value = notes[result.key] || '';
+
+      // The existing Planner reads this value when the modal opens.
+      // It then builds the original 48 editable half-hour fields.
+      localStorage.setItem(
+        'pl-mode',
+        result.type === 'event' ? 'plan' : 'text'
+      );
+
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+
+      if (result.type === 'event') {
+        // Wait for the original Planner to build the selected date.
+        setTimeout(() => {
+          const plan = modal.querySelector('.pl-plan');
+          const input = plan?.querySelector(
+            '.pl-in[data-slot="' + result.slot + '"]'
+          );
+
+          if (!input) {
+            console.error('[Search] Could not locate event slot:', result);
+            return;
+          }
+
+          const row = input.closest('.pl-row');
+
+          if (row) {
+            plan.scrollTop = Math.max(
+              0,
+              row.offsetTop - (plan.clientHeight - row.offsetHeight) / 2
+            );
+            row.classList.add('pl-hit');
+            setTimeout(() => row.classList.remove('pl-hit'), 2500);
+          }
+
+          input.focus({ preventScroll: true });
+          try {
+            input.setSelectionRange(input.value.length, input.value.length);
+          } catch (e) {}
+        }, 180);
+      } else {
+        setTimeout(() => textarea.focus(), 100);
+      }
+    }, 30);
+  }
+
+  function installModal(modal) {
+    if (!modal || modal.dataset.gs2Installed === '1') return;
+
+    const bar = modal.querySelector('.pl-bar');
+    const plan = modal.querySelector('.pl-plan');
+
+    if (!bar || !plan) return;
+
+    modal.dataset.gs2Installed = '1';
+
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'pl-b gs2-tab';
+    tab.textContent = '🔎 Пошук';
+
+    const panel = document.createElement('div');
+    panel.className = 'gs2-panel';
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'gs2-input';
+    input.placeholder = 'Введіть точну фразу для пошуку...';
+
+    const status = document.createElement('div');
+    status.className = 'gs2-status';
+    status.textContent = 'Пошук у всіх збережених нотатках і подіях.';
+
+    const results = document.createElement('div');
+    results.className = 'gs2-results';
+
+    panel.append(input, status, results);
+    bar.appendChild(tab);
+    plan.after(panel);
+
+    // Open the search tab without triggering the original text/plan handler.
+    tab.addEventListener('click', event => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      modal.dataset.plMode = 'gs2-search';
+
+      bar.querySelectorAll('.pl-b').forEach(button =>
+        button.classList.remove('act')
+      );
+      tab.classList.add('act');
+
+      panel.classList.add('gs2-active');
+      input.focus();
+    });
+
+    // Restore the normal editor when either original tab is clicked.
+    bar.addEventListener('click', event => {
+      const originalTab = event.target.closest('.pl-b:not(.gs2-tab)');
+      if (!originalTab) return;
+      panel.classList.remove('gs2-active');
+    });
+
+    function render() {
+      results.replaceChildren();
+
+      const query = input.value;
+      if (!normalize(query)) {
+        status.textContent =
+          'Введіть фразу для пошуку в усіх нотатках і подіях.';
+        return;
+      }
+
+      const matches = searchAll(query);
+      status.textContent = 'Знайдено: ' + matches.length;
+
+      if (!matches.length) {
+        const empty = document.createElement('div');
+        empty.textContent = 'Точну фразу не знайдено.';
+        results.appendChild(empty);
+        return;
+      }
+
+      matches.forEach(result => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'gs2-result';
+
+        const meta = document.createElement('span');
+        meta.className = 'gs2-meta';
+        meta.textContent =
+          (result.type === 'note' ? '📝 Нотатка · ' : '🗓 Подія · ') +
+          dateText(result.key) +
+          (result.type === 'event' ? ' · ' + timeText(result.slot) : '');
+
+        const text = document.createElement('span');
+        text.className = 'gs2-result-text';
+        text.textContent = result.text;
+
+        button.append(meta, text);
+
+        button.addEventListener('click', () => {
+          openSavedResult(result);
+        });
+
+        results.appendChild(button);
+      });
+    }
+
+    input.addEventListener('input', render);
+  }
+
+  function installAll() {
+    installModal(document.getElementById('day-modal'));
+    installModal(document.getElementById('mw-note-modal'));
+  }
+
+  // The month editor and Planner bar may be created after page startup.
+  const observer = new MutationObserver(installAll);
+
+  function start() {
+    installAll();
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
+<!-- END GLOBAL SEARCH V2 -->
+
+
 </html>
