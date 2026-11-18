@@ -7297,4 +7297,266 @@ window.addEventListener('DOMContentLoaded', () => {
 <!-- END GLOBAL SEARCH V2 -->
 
 
+
+<!-- YEAR PROGRESS RING V2: clock frame extension -->
+<style id="yrp-v2-style">
+  #face.yrp-v2-ready {
+    border-color: transparent !important;
+  }
+
+  #face .yrp-v2-ring {
+    position: absolute;
+    inset: calc(-1 * var(--clk-brd-w, 5px));
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+    background: conic-gradient(
+      from 0deg,
+      var(--clk-brd-c, #6264a7) 0deg var(--yrp-v2-angle, 0deg),
+      var(--yrp-v2-remaining, #00dce8) var(--yrp-v2-angle, 0deg) 360deg
+    );
+    -webkit-mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - var(--clk-brd-w, 5px)),
+      #000 calc(100% - var(--clk-brd-w, 5px) + 1px)
+    );
+    mask: radial-gradient(
+      farthest-side,
+      transparent calc(100% - var(--clk-brd-w, 5px)),
+      #000 calc(100% - var(--clk-brd-w, 5px) + 1px)
+    );
+  }
+
+  #face .yrp-v2-marker {
+    position: absolute;
+    z-index: 10000;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    white-space: nowrap;
+    font-weight: 900;
+    line-height: 1;
+    font-size: var(--yrp-v2-marker-size, 18px);
+    color: var(--yrp-v2-marker-color, #ffffff);
+    text-shadow: 0 0 3px #000, 1px 1px 3px #000, -1px -1px 3px #000;
+  }
+
+  #yrp-v2-controls {
+    border-top: 1px dashed #ccc;
+    margin-top: 8px;
+    padding-top: 8px;
+  }
+
+  #yrp-v2-controls .row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin: 8px 0;
+  }
+
+  #yrp-v2-controls input[type="range"] {
+    width: 190px;
+    max-width: 55%;
+  }
+</style>
+
+<script id="yrp-v2-script">
+(() => {
+  'use strict';
+
+  function installYearRing() {
+    if (window.__yrpV2Installed) return;
+
+    const face = document.getElementById('face');
+    const panel = document.getElementById('panel');
+    const frameColor = document.getElementById('v-clk-brd-c');
+
+    if (!face || !panel || !frameColor) {
+      console.error('[Year ring] Required original clock elements not found.');
+      return;
+    }
+
+    const frameRow = frameColor.closest('.row');
+    if (!frameRow) {
+      console.error('[Year ring] Original frame settings row not found.');
+      return;
+    }
+
+    if (document.getElementById('yrp-v2-controls')) return;
+
+    window.__yrpV2Installed = true;
+
+    const root = document.documentElement;
+    const get = (key, fallback) => {
+      try {
+        return localStorage.getItem(key) ?? String(fallback);
+      } catch (_) {
+        return String(fallback);
+      }
+    };
+    const save = (key, value) => {
+      try {
+        localStorage.setItem(key, value);
+      } catch (error) {
+        console.warn('[Year ring] Could not save setting:', error);
+      }
+    };
+
+    const controls = document.createElement('div');
+    controls.id = 'yrp-v2-controls';
+
+    controls.innerHTML = `
+      <h4 style="margin:5px 0 10px">Річний прогрес на рамці годинника</h4>
+
+      <div class="row">
+        Товщина рамки (px)
+        <input id="v-clk-brd-w" type="range"
+          min="1" max="100" step="1">
+        <b id="yrp-v2-width-value"></b>
+      </div>
+
+      <div class="row">
+        Колір днів, що залишилися
+        <input id="yrp-v2-remaining" type="color">
+      </div>
+
+      <div class="row">
+        Розмір позначки дня
+        <input id="yrp-v2-marker-size" type="range"
+          min="8" max="50" step="1">
+        <b id="yrp-v2-size-value"></b>
+      </div>
+
+      <div class="row">
+        Колір позначки дня
+        <input id="yrp-v2-marker-color" type="color">
+      </div>
+    `;
+
+    frameRow.after(controls);
+
+    const width = controls.querySelector('#v-clk-brd-w');
+    const remaining = controls.querySelector('#yrp-v2-remaining');
+    const markerSize = controls.querySelector('#yrp-v2-marker-size');
+    const markerColor = controls.querySelector('#yrp-v2-marker-color');
+    const widthValue = controls.querySelector('#yrp-v2-width-value');
+    const sizeValue = controls.querySelector('#yrp-v2-size-value');
+
+    width.value = get('v-clk-brd-w', 8);
+    remaining.value = get('yrp-v2-remaining', '#00dce8');
+    markerSize.value = get('yrp-v2-marker-size', 18);
+    markerColor.value = get('yrp-v2-marker-color', '#ffffff');
+
+    const ring = document.createElement('div');
+    ring.className = 'yrp-v2-ring';
+    ring.setAttribute('aria-hidden', 'true');
+
+    const marker = document.createElement('div');
+    marker.className = 'yrp-v2-marker';
+    marker.setAttribute('aria-hidden', 'true');
+
+    // Insert the ring behind the existing clock contents.
+    face.insertBefore(ring, face.firstChild);
+    face.appendChild(marker);
+
+    function update() {
+      const now = new Date();
+      const year = now.getFullYear();
+      const start = new Date(year, 0, 1);
+      const next = new Date(year + 1, 0, 1);
+
+      const day = Math.floor(
+        (now.getTime() - start.getTime()) / 86400000
+      ) + 1;
+
+      const total = Math.round(
+        (next.getTime() - start.getTime()) / 86400000
+      );
+
+      const angle = day / total * 360;
+      const thickness = Math.max(1, Math.min(100, Number(width.value) || 8));
+
+      // Keep the original Рамка picker as the passed-days color.
+      root.style.setProperty('--clk-brd-c', frameColor.value);
+      root.style.setProperty('--clk-brd-w', thickness + 'px');
+      root.style.setProperty('--yrp-v2-angle', angle + 'deg');
+      root.style.setProperty('--yrp-v2-remaining', remaining.value);
+      root.style.setProperty('--yrp-v2-marker-size', markerSize.value + 'px');
+      root.style.setProperty('--yrp-v2-marker-color', markerColor.value);
+
+      widthValue.textContent = thickness + ' px';
+      sizeValue.textContent = markerSize.value + ' px';
+
+      marker.textContent = day;
+
+      const rect = face.getBoundingClientRect();
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const radius = Math.min(rect.width, rect.height) / 2 +
+        thickness / 2;
+
+      // Clockwise from 12 o'clock; day 322 falls between 10 and 11.
+      const radians = angle * Math.PI / 180 - Math.PI / 2;
+
+      marker.style.left =
+        (centerX + Math.cos(radians) * radius) + 'px';
+      marker.style.top =
+        (centerY + Math.sin(radians) * radius) + 'px';
+
+      // Only hide the original border after the ring exists.
+      face.classList.add('yrp-v2-ready');
+    }
+
+    width.addEventListener('input', () => {
+      save('v-clk-brd-w', width.value);
+      update();
+    });
+
+    remaining.addEventListener('input', () => {
+      save('yrp-v2-remaining', remaining.value);
+      update();
+    });
+
+    markerSize.addEventListener('input', () => {
+      save('yrp-v2-marker-size', markerSize.value);
+      update();
+    });
+
+    markerColor.addEventListener('input', () => {
+      save('yrp-v2-marker-color', markerColor.value);
+      update();
+    });
+
+    frameColor.addEventListener('input', update);
+
+    update();
+
+    window.addEventListener('resize', update);
+
+    // Recalculate at the next local midnight, not every second.
+    function scheduleMidnightUpdate() {
+      const now = new Date();
+      const midnight = new Date(
+        now.getFullYear(), now.getMonth(), now.getDate() + 1
+      );
+
+      window.setTimeout(() => {
+        update();
+        scheduleMidnightUpdate();
+      }, Math.max(1000, midnight.getTime() - now.getTime() + 1000));
+    }
+
+    scheduleMidnightUpdate();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', installYearRing, { once: true });
+  } else {
+    installYearRing();
+  }
+})();
+</script>
+<!-- END YEAR PROGRESS RING V2 -->
+
+
 </html>
