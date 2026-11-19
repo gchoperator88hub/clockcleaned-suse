@@ -7559,4 +7559,383 @@ window.addEventListener('DOMContentLoaded', () => {
 <!-- END YEAR PROGRESS RING V2 -->
 
 
+
+<!-- FOUR SEASONS OUTER CIRCLE -->
+<style id="four-seasons-circle-style">
+#four-seasons-circle {
+  position: absolute;
+
+  /* First ring's outward extent + seasons ring thickness */
+  inset: calc(
+    0px - var(--clk-brd-w, 5px) - var(--fs-thickness, 10px)
+  );
+
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 20;
+
+  background: conic-gradient(
+    from 0deg,
+    var(--fs-winter, #8ecae6) 0deg 60deg,
+    var(--fs-spring, #80b918) 60deg 150deg,
+    var(--fs-summer, #ffb703) 150deg 240deg,
+    var(--fs-autumn, #e76f51) 240deg 330deg,
+    var(--fs-winter, #8ecae6) 330deg 360deg
+  );
+
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--fs-thickness, 10px)),
+    #000 calc(100% - var(--fs-thickness, 10px))
+  );
+
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--fs-thickness, 10px)),
+    #000 calc(100% - var(--fs-thickness, 10px))
+  );
+}
+
+#four-seasons-controls .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 5px 0;
+}
+
+#four-seasons-controls input[type="range"] {
+  max-width: 145px;
+}
+</style>
+
+<script>
+(() => {
+  function initFourSeasonsCircle() {
+    const face = document.getElementById('face');
+    const panel = document.getElementById('panel');
+    const frameColor = document.getElementById('v-clk-brd-c');
+
+    if (!face || !panel || !frameColor) return;
+    if (document.getElementById('four-seasons-circle')) return;
+
+    const ring = document.createElement('div');
+    ring.id = 'four-seasons-circle';
+    face.appendChild(ring);
+
+    const controls = document.createElement('div');
+    controls.id = 'four-seasons-controls';
+
+    controls.innerHTML = `
+      <div style="border-top:1px solid #ccc;padding-top:10px;margin-top:10px">
+        <h5>Коло пір року</h5>
+
+        <div class="row">
+          Товщина кола
+          <input id="fs-thickness" type="range" min="2" max="35" step="1">
+        </div>
+
+        <div class="row">
+          Зима (11 → 2, грудень–лютий)
+          <input id="fs-winter" type="color">
+        </div>
+
+        <div class="row">
+          Весна (2 → 5, березень–травень)
+          <input id="fs-spring" type="color">
+        </div>
+
+        <div class="row">
+          Літо (5 → 8, червень–серпень)
+          <input id="fs-summer" type="color">
+        </div>
+
+        <div class="row">
+          Осінь (8 → 11, вересень–листопад)
+          <input id="fs-autumn" type="color">
+        </div>
+      </div>
+    `;
+
+    const frameRow = frameColor.closest('.row');
+    if (frameRow) frameRow.after(controls);
+    else panel.appendChild(controls);
+
+    const settings = [
+      ['thickness', 'fs-thickness', '10'],
+      ['winter', 'fs-winter', '#8ecae6'],
+      ['spring', 'fs-spring', '#80b918'],
+      ['summer', 'fs-summer', '#ffb703'],
+      ['autumn', 'fs-autumn', '#e76f51']
+    ];
+
+    settings.forEach(([key, id, fallback]) => {
+      const input = document.getElementById(id);
+      if (!input) return;
+
+      input.value =
+        localStorage.getItem('four-seasons-' + key) || fallback;
+
+      const apply = () => {
+        const value = input.value;
+
+        localStorage.setItem('four-seasons-' + key, value);
+
+        if (key === 'thickness') {
+          ring.style.setProperty('--fs-thickness', value + 'px');
+        } else {
+          ring.style.setProperty('--fs-' + key, value);
+        }
+      };
+
+      input.addEventListener('input', apply);
+      apply();
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initFourSeasonsCircle);
+  } else {
+    initFourSeasonsCircle();
+  }
+})();
+</script>
+<!-- END FOUR SEASONS OUTER CIRCLE -->
+
+
+<!-- FOUR SEASONS: MONTH NAMES WITH SHARED SEASON TEXT SETTINGS -->
+<style id="four-seasons-month-labels-style">
+#four-seasons-month-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 21;
+  overflow: visible;
+}
+
+.four-seasons-month-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  white-space: nowrap;
+  text-align: center;
+  line-height: 1;
+  font-family: Arial, sans-serif;
+  text-shadow: 0 1px 2px rgba(0,0,0,.65);
+  pointer-events: none;
+}
+
+#four-seasons-month-controls .row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 5px 0;
+}
+
+#four-seasons-month-controls input[type="range"] {
+  max-width: 125px;
+}
+
+#four-seasons-month-controls .season-heading {
+  font-weight: bold;
+  margin-top: 10px;
+  padding-top: 7px;
+  border-top: 1px solid #aaa;
+}
+</style>
+
+<script>
+(() => {
+  function initSeasonMonthLabels() {
+    const face = document.getElementById('face');
+    const ring = document.getElementById('four-seasons-circle');
+    const oldControls = document.getElementById('four-seasons-controls');
+
+    if (!face || !ring || !oldControls) return;
+    if (document.getElementById('four-seasons-month-labels')) return;
+
+    const months = [
+      { name: 'Грудень', angle: 345, season: 'winter' },
+      { name: 'Січень', angle: 15, season: 'winter' },
+      { name: 'Лютий', angle: 45, season: 'winter' },
+
+      { name: 'Березень', angle: 75, season: 'spring' },
+      { name: 'Квітень', angle: 105, season: 'spring' },
+      { name: 'Травень', angle: 135, season: 'spring' },
+
+      { name: 'Червень', angle: 165, season: 'summer' },
+      { name: 'Липень', angle: 195, season: 'summer' },
+      { name: 'Серпень', angle: 225, season: 'summer' },
+
+      { name: 'Вересень', angle: 255, season: 'autumn' },
+      { name: 'Жовтень', angle: 285, season: 'autumn' },
+      { name: 'Листопад', angle: 315, season: 'autumn' }
+    ];
+
+    const seasons = [
+      { key: 'winter', name: 'Зима', color: '#ffffff' },
+      { key: 'spring', name: 'Весна', color: '#ffffff' },
+      { key: 'summer', name: 'Літо', color: '#ffffff' },
+      { key: 'autumn', name: 'Осінь', color: '#ffffff' }
+    ];
+
+    const layer = document.createElement('div');
+    layer.id = 'four-seasons-month-labels';
+
+    const labels = [];
+
+    months.forEach(month => {
+      const label = document.createElement('div');
+      label.className = 'four-seasons-month-label';
+      label.textContent = month.name;
+
+      layer.appendChild(label);
+      labels.push({
+        element: label,
+        season: month.season,
+        angle: month.angle
+      });
+    });
+
+    face.appendChild(layer);
+
+    const controls = document.createElement('div');
+    controls.id = 'four-seasons-month-controls';
+
+    controls.innerHTML = `
+      <div style="border-top:1px solid #ccc;padding-top:10px;margin-top:10px">
+        <h5>Назви місяців у колі пір року</h5>
+
+        ${seasons.map(season => `
+          <div class="season-heading">${season.name}</div>
+
+          <div class="row">
+            Розмір тексту
+            <input id="month-size-${season.key}"
+              type="range" min="6" max="18" step="1">
+          </div>
+
+          <div class="row">
+            Товщина тексту
+            <input id="month-weight-${season.key}"
+              type="range" min="300" max="900" step="100">
+          </div>
+
+          <div class="row">
+            Колір тексту
+            <input id="month-color-${season.key}" type="color">
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    oldControls.after(controls);
+
+    seasons.forEach(season => {
+      const settings = [
+        {
+          id: 'month-size-' + season.key,
+          storage: 'four-seasons-month-size-' + season.key,
+          fallback: '8',
+          property: 'fontSize',
+          suffix: 'px'
+        },
+        {
+          id: 'month-weight-' + season.key,
+          storage: 'four-seasons-month-weight-' + season.key,
+          fallback: '600',
+          property: 'fontWeight',
+          suffix: ''
+        },
+        {
+          id: 'month-color-' + season.key,
+          storage: 'four-seasons-month-color-' + season.key,
+          fallback: season.color,
+          property: 'color',
+          suffix: ''
+        }
+      ];
+
+      settings.forEach(setting => {
+        const input = document.getElementById(setting.id);
+        if (!input) return;
+
+        input.value =
+          localStorage.getItem(setting.storage) || setting.fallback;
+
+        const apply = () => {
+          const value = input.value;
+
+          localStorage.setItem(setting.storage, value);
+
+          labels.forEach(item => {
+            if (item.season === season.key) {
+              item.element.style[setting.property] =
+                value + setting.suffix;
+            }
+          });
+        };
+
+        input.addEventListener('input', apply);
+        apply();
+      });
+    });
+
+    function positionMonthLabels() {
+      const centerX = face.clientWidth / 2;
+      const centerY = face.clientHeight / 2;
+
+      const style = getComputedStyle(face);
+      const borderWidth =
+        parseFloat(style.borderLeftWidth) || 0;
+
+      const thicknessInput =
+        document.getElementById('fs-thickness');
+
+      const thickness = thicknessInput
+        ? Number(thicknessInput.value)
+        : 10;
+
+      const radius =
+        Math.min(face.clientWidth, face.clientHeight) / 2 +
+        borderWidth +
+        thickness / 2;
+
+      labels.forEach(item => {
+        const radians = item.angle * Math.PI / 180;
+
+        item.element.style.left =
+          (centerX + Math.sin(radians) * radius) + 'px';
+
+        item.element.style.top =
+          (centerY - Math.cos(radians) * radius) + 'px';
+      });
+    }
+
+    const thicknessInput = document.getElementById('fs-thickness');
+
+    if (thicknessInput) {
+      thicknessInput.addEventListener('input', positionMonthLabels);
+    }
+
+    window.addEventListener('resize', positionMonthLabels);
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(positionMonthLabels);
+      observer.observe(face);
+    }
+
+    positionMonthLabels();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initSeasonMonthLabels);
+  } else {
+    initSeasonMonthLabels();
+  }
+})();
+</script>
+<!-- END FOUR SEASONS MONTH LABELS -->
+
+
 </html>
