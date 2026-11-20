@@ -7938,4 +7938,441 @@ window.addEventListener('DOMContentLoaded', () => {
 <!-- END FOUR SEASONS MONTH LABELS -->
 
 
+<!-- ===== MONTH WIDGET: SIX WEEKS + ADJACENT DAYS — FIXED ===== -->
+<style id="mw-adjacent-fixed-css">
+  #mw-widget .mw-day.mw-adjacent {
+    opacity: var(--mw-adjacent-opacity, .35) !important;
+    background: transparent !important;
+    color: var(--mw-txt, #000) !important;
+    border-style: dashed !important;
+  }
+
+  #mw-widget .mw-day.mw-adjacent.has-note {
+    background: var(--mw-note-bg, #ffeb3b) !important;
+    color: var(--mw-note-txt, #000) !important;
+  }
+
+  #mw-widget .mw-day.mw-adjacent.mw-adjacent-event {
+    border-bottom: 3px solid var(--mw-ev-time, #c2185b) !important;
+  }
+
+  #mw-adjacent-opacity-row {
+    margin: 6px 0;
+    font-size: 13px;
+  }
+
+  #mw-adjacent-opacity-row input {
+    width: 100%;
+  }
+</style>
+
+<script id="mw-adjacent-fixed-js">
+(() => {
+  'use strict';
+
+  if (window.__mwAdjacentSixWeeksFixed) return;
+  window.__mwAdjacentSixWeeksFixed = true;
+
+  const MONTHS = [
+    'Січ1','Лют2','Бер3','Кві4','Тра5','Чер6',
+    'Лип7','Сер8','Вер9','Жов10','Лис11','Гру12'
+  ];
+
+  const $ = s => document.querySelector(s);
+
+  function read(key) {
+    try {
+      const value = JSON.parse(localStorage.getItem(key) || '{}');
+      return value && typeof value === 'object' ? value : {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function isoWeek(date) {
+    const d = new Date(Date.UTC(
+      date.getFullYear(), date.getMonth(), date.getDate()
+    ));
+
+    d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+
+    const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+
+    return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  }
+
+  function hasNote(notes, key) {
+    return typeof notes[key] === 'string' &&
+      notes[key].trim() !== '';
+  }
+
+  function hasEvent(events, key) {
+    const day = events[key];
+
+    if (!day || typeof day !== 'object' || Array.isArray(day)) {
+      return false;
+    }
+
+    return Object.keys(day).some(slot => {
+      const n = Number(slot);
+
+      return Number.isInteger(n) &&
+        n >= 0 && n < 48 &&
+        typeof day[slot] === 'string' &&
+        day[slot].trim() !== '';
+    });
+  }
+
+  function escapeHTML(value) {
+    return String(value).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[ch]);
+  }
+
+  function install() {
+    const widget = $('#mw-widget');
+    const grid = widget && widget.querySelector('.mw-grid');
+    const settings = $('#mw-size-box');
+
+    if (!widget || !grid || !settings) return false;
+
+    if (grid.dataset.adjInstalled === '1') return true;
+
+    // Opacity slider
+    if (!$('#mw-adjacent-opacity')) {
+      const row = document.createElement('div');
+      row.id = 'mw-adjacent-opacity-row';
+      row.innerHTML =
+        'Прозорість сусідніх днів: ' +
+        '<input id="mw-adjacent-opacity" type="range" ' +
+        'min="10" max="90" step="5">';
+
+      settings.appendChild(row);
+    }
+
+    const slider = $('#mw-adjacent-opacity');
+
+    if (slider && slider.dataset.adjReady !== '1') {
+      slider.dataset.adjReady = '1';
+      slider.value = localStorage.getItem('mw-adjacent-opacity') || '35';
+
+      const applyOpacity = () => {
+        localStorage.setItem('mw-adjacent-opacity', slider.value);
+        document.documentElement.style.setProperty(
+          '--mw-adjacent-opacity',
+          Number(slider.value) / 100
+        );
+      };
+
+      slider.addEventListener('input', applyOpacity);
+      applyOpacity();
+    }
+
+    function rebuild() {
+      const title = widget.querySelector('.mw-title');
+      const match = title &&
+        title.textContent.trim().match(/^(\S+)\s+(\d{4})$/);
+
+      if (!match) return;
+
+      const month = MONTHS.indexOf(match[1]);
+      if (month < 0) return;
+
+      const year = Number(match[2]);
+      const notes = read('calendar_notes');
+      const events = read('calendar_planner');
+
+      const notesRaw = localStorage.getItem('calendar_notes') || '';
+      const eventsRaw = localStorage.getItem('calendar_planner') || '';
+
+      const signature = year + '|' + month + '|' +
+        notesRaw + '|' + eventsRaw;
+
+      // Check the actual grid too. The original app can redraw it
+      // without changing the month or database.
+      const buttons = grid.querySelectorAll('.mw-day');
+      const validGrid = buttons.length === 42 &&
+        Array.from(buttons).every(button =>
+          button.hasAttribute('data-adj-year') &&
+          button.hasAttribute('data-adj-month')
+        );
+
+      if (grid.dataset.adjSignature === signature && validGrid) {
+        return;
+      }
+
+      const first = new Date(year, month, 1);
+      const offset = (first.getDay() + 6) % 7;
+      const start = new Date(year, month, 1 - offset);
+      const today = new Date();
+
+      let html = '<div class="mw-wd">Тиж</div>';
+
+      ['Пн','Вт','Ср','Чт','Пт','Сб','Нд'].forEach(day => {
+        html += '<div class="mw-wd">' + day + '</div>';
+      });
+
+      for (let week = 0; week < 6; week++) {
+        const monday = new Date(start);
+        monday.setDate(start.getDate() + week * 7);
+
+        html += '<div class="mw-wk">' +
+          isoWeek(monday) + '</div>';
+
+        for (let i = 0; i < 7; i++) {
+          const date = new Date(monday);
+          date.setDate(monday.getDate() + i);
+
+          const y = date.getFullYear();
+          const m = date.getMonth();
+          const d = date.getDate();
+          const key = y + '-' + m + '-' + d;
+
+          const adjacent = y !== year || m !== month;
+          const note = hasNote(notes, key);
+          const event = hasEvent(events, key);
+
+          const isToday =
+            y === today.getFullYear() &&
+            m === today.getMonth() &&
+            d === today.getDate();
+
+          const classes = [
+            'mw-day',
+            note ? 'has-note' : '',
+            isToday ? 'today' : '',
+            adjacent ? 'mw-adjacent' : '',
+            adjacent && event ? 'mw-adjacent-event' : ''
+          ].filter(Boolean).join(' ');
+
+          const label = d + ' ' + MONTHS[m] + ' ' + y;
+          const tooltip = [
+            label,
+            note ? notes[key] : '',
+            event ? 'Є подія планувальника' : ''
+          ].filter(Boolean).join('\n');
+
+          html +=
+            '<button type="button" class="' + classes + '"' +
+            ' data-day="' + d + '"' +
+            ' data-adj-year="' + y + '"' +
+            ' data-adj-month="' + m + '"' +
+            ' title="' + escapeHTML(tooltip) + '">' +
+            d +
+            '</button>';
+        }
+      }
+
+      grid.innerHTML = html;
+      grid.dataset.adjSignature = signature;
+    }
+
+    // Open the correct real date when an adjacent day is clicked.
+    grid.addEventListener('click', event => {
+      const day = event.target.closest(
+        '.mw-day.mw-adjacent[data-adj-year]'
+      );
+
+      if (!day) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const y = Number(day.dataset.adjYear);
+      const m = Number(day.dataset.adjMonth);
+      const d = Number(day.dataset.day);
+
+      if (!Number.isInteger(y) ||
+          !Number.isInteger(m) || m < 0 || m > 11 ||
+          !Number.isInteger(d) || d < 1 || d > 31) {
+        return;
+      }
+
+      window.dispatchEvent(new CustomEvent('mw:open-note', {
+        detail: {
+          key: y + '-' + m + '-' + d,
+          label: d + ' ' + MONTHS[m] + ' ' + y
+        }
+      }));
+    }, true);
+
+    // Refresh after the original widget redraws.
+    const observer = new MutationObserver(() => {
+      rebuild();
+    });
+
+    observer.observe(grid, { childList: true });
+
+    const title = widget.querySelector('.mw-title');
+    if (title) {
+      observer.observe(title, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+    }
+
+    // Planner saves update calendar_planner and dispatch pl:changed.
+    function refresh() {
+      grid.dataset.adjSignature = '';
+      rebuild();
+    }
+
+    window.addEventListener('pl:changed', refresh);
+    window.addEventListener('storage', refresh);
+
+    // Refresh after note editors close/save.
+    ['day-modal', 'mw-note-modal'].forEach(id => {
+      const modal = document.getElementById(id);
+      if (!modal) return;
+
+      new MutationObserver(refresh).observe(modal, {
+        attributes: true,
+        attributeFilter: ['class']
+      });
+    });
+
+    grid.dataset.adjInstalled = '1';
+    rebuild();
+
+    return true;
+  }
+
+  function start() {
+    if (install()) return;
+
+    const observer = new MutationObserver(() => {
+      if (install()) observer.disconnect();
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
+<!-- ===== END MONTH WIDGET PATCH ===== -->
+
+
+<!-- FIX: EVENT DOTS USE EACH CELL'S REAL CALENDAR DATE -->
+<script id="mw-real-date-event-dots">
+(() => {
+  'use strict';
+
+  if (window.__mwRealDateEventDots) return;
+  window.__mwRealDateEventDots = true;
+
+  const MONTHS = [
+    'Січ1', 'Лют2', 'Бер3', 'Кві4',
+    'Тра5', 'Чер6', 'Лип7', 'Сер8',
+    'Вер9', 'Жов10', 'Лис11', 'Гру12'
+  ];
+
+  function refresh() {
+    const grid = document.querySelector('#mw-widget .mw-grid');
+    const title = document.querySelector('#mw-widget .mw-title');
+    if (!grid || !title) return;
+
+    const match = title.textContent.trim().match(/^(\S+)\s+(\d{4})$/);
+    if (!match) return;
+
+    const month = MONTHS.indexOf(match[1]);
+    if (month < 0) return;
+
+    const year = Number(match[2]);
+
+    let plan = {};
+    try {
+      plan = JSON.parse(localStorage.getItem('calendar_planner') || '{}') || {};
+    } catch (_) {}
+
+    const cells = Array.from(grid.children);
+
+    cells.forEach((cell, index) => {
+      if (!cell.matches('.mw-day')) return;
+
+      // Grid has 8 columns: week number + 7 weekdays.
+      // First 8 cells are the weekday headings.
+      const row = Math.floor(index / 8);
+      const col = index % 8;
+
+      if (row < 1 || col < 1) return;
+
+      // Monday-based offset from the first day of the displayed month.
+      const offset = (new Date(year, month, 1).getDay() + 6) % 7;
+      const dayOffset = (row - 1) * 7 + (col - 1) - offset;
+
+      const actualDate = new Date(year, month, 1 + dayOffset);
+      const key = `${actualDate.getFullYear()}-${actualDate.getMonth()}-${actualDate.getDate()}`;
+
+      const savedDay = plan[key];
+
+      const hasEvent = !!savedDay &&
+        typeof savedDay === 'object' &&
+        Object.keys(savedDay).some(slot =>
+          /^\d+$/.test(slot) &&
+          Number(slot) >= 0 &&
+          Number(slot) < 48 &&
+          String(savedDay[slot] ?? '').trim() !== ''
+        );
+
+      cell.classList.toggle('pl-has', hasEvent);
+    });
+  }
+
+  function install() {
+    const grid = document.querySelector('#mw-widget .mw-grid');
+    const title = document.querySelector('#mw-widget .mw-title');
+
+    if (!grid || !title) return;
+
+    if (!grid.dataset.realDateDotsObserver) {
+      grid.dataset.realDateDotsObserver = '1';
+
+      const observer = new MutationObserver(refresh);
+      observer.observe(grid, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class']
+      });
+      observer.observe(title, {
+        childList: true,
+        characterData: true,
+        subtree: true
+      });
+    }
+
+    refresh();
+  }
+
+  window.addEventListener('pl:changed', refresh);
+  window.addEventListener('storage', refresh);
+
+  // Recheck after the widget is created or redrawn.
+  new MutationObserver(install).observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', install, { once: true });
+  } else {
+    install();
+  }
+})();
+</script>
+<!-- END FIX -->
+
 </html>
