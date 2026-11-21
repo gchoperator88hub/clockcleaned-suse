@@ -8782,4 +8782,598 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 <!-- END CLOCK WIDGET HIT AREA FIX -->
 
+
+
+<!-- ===== FOUR-QUARTER CELL + WIDGET TOGGLE ===== -->
+<style id="widgets-master-toggle-style">
+  html[data-widgets-layout="hide"] #master-widget,
+  html[data-widgets-layout="hide"] #mw-widget,
+  html[data-widgets-layout="hide"] #pl-next {
+    display: none !important;
+  }
+
+  html[data-widgets-layout="show"] #mw-widget,
+  html[data-widgets-layout="show"] #pl-next {
+    display: block !important;
+  }
+
+  #hdr-row .wmt-slot-parent {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  #widgets-mode-slot {
+    position: absolute;
+    inset: 2px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+    z-index: 99999;
+  }
+
+  #widgets-mode-slot > div {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  #widgets-mode-slot #fy-open {
+    position: static !important;
+    inset: auto !important;
+    transform: none !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+    white-space: nowrap !important;
+    font-size: 12px !important;
+  }
+
+  #widgets-mode-btn {
+    width: 100%;
+    height: 100%;
+    min-width: 0;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    box-sizing: border-box;
+    overflow: hidden;
+    white-space: nowrap;
+    font-size: var(--wmt-size, 11px);
+    font-weight: bold;
+    color: var(--wmt-text, #ffffff);
+    background: var(--wmt-bg, #6264a7);
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    cursor: pointer;
+    line-height: 1;
+  }
+</style>
+
+<script id="widgets-master-toggle-script">
+(() => {
+  'use strict';
+
+  if (window.__widgetsMasterToggleInstalled) return;
+  window.__widgetsMasterToggleInstalled = true;
+
+  const root = document.documentElement;
+  const MODE_KEY = 'widgets-master-mode-v1';
+
+  const get = (key, fallback) => {
+    try { return localStorage.getItem(key) ?? fallback; }
+    catch (_) { return fallback; }
+  };
+
+  const save = (key, value) => {
+    try { localStorage.setItem(key, value); }
+    catch (_) {}
+  };
+
+  let mode = get(MODE_KEY, 'show');
+  if (mode !== 'show' && mode !== 'hide') mode = 'show';
+
+  function applyLook() {
+    root.style.setProperty('--wmt-bg', get('wmt-bg', '#6264a7'));
+    root.style.setProperty('--wmt-text', get('wmt-text', '#ffffff'));
+    root.style.setProperty('--wmt-size', get('wmt-size', '11') + 'px');
+  }
+
+  function applyMode() {
+    root.dataset.widgetsLayout = mode;
+
+    const button = document.getElementById('widgets-mode-btn');
+    if (button) {
+      button.title = mode === 'show'
+        ? 'Віджети показані — натисніть, щоб сховати'
+        : 'Віджети сховані — натисніть, щоб показати';
+    }
+  }
+
+  function addButton() {
+    const header = document.getElementById('hdr-row');
+    const cell = header?.querySelector('.hdr-cell:first-child');
+    if (!cell) return;
+
+    cell.classList.add('wmt-slot-parent');
+
+    let slot = document.getElementById('widgets-mode-slot');
+
+    if (!slot) {
+      slot = document.createElement('div');
+      slot.id = 'widgets-mode-slot';
+      slot.innerHTML = `
+        <div id="wmt-quarter-1"></div>
+        <div id="wmt-quarter-2">
+          <button type="button" id="widgets-mode-btn">◉</button>
+        </div>
+        <div id="wmt-quarter-3"></div>
+        <div id="wmt-quarter-4"></div>
+      `;
+      cell.appendChild(slot);
+
+      slot.querySelector('#widgets-mode-btn').addEventListener('click', () => {
+        mode = mode === 'show' ? 'hide' : 'show';
+        save(MODE_KEY, mode);
+        applyMode();
+      });
+    }
+
+    /* Move the original Рік button into the upper-left quarter. */
+    const oldYearButton = document.getElementById('fy-open');
+    const firstQuarter = document.getElementById('wmt-quarter-1');
+
+    if (oldYearButton && firstQuarter &&
+        oldYearButton.parentElement !== firstQuarter) {
+      firstQuarter.appendChild(oldYearButton);
+    }
+
+    applyMode();
+  }
+
+  function addSettings() {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('wmt-settings')) return;
+
+    const anchor = document.getElementById('v-year-bg-c')?.closest('.row');
+    if (!anchor) return;
+
+    const box = document.createElement('div');
+    box.id = 'wmt-settings';
+    box.innerHTML = `
+      <h4 style="margin:12px 0 8px">Кнопка показу віджетів</h4>
+      <div class="row">Фон кнопки <input type="color" id="wmt-bg-input"></div>
+      <div class="row">Колір символу <input type="color" id="wmt-text-input"></div>
+      <div class="row">Розмір символу
+        <input type="range" id="wmt-size-input" min="8" max="22" step="1">
+      </div>
+    `;
+    anchor.after(box);
+
+    const bg = box.querySelector('#wmt-bg-input');
+    const txt = box.querySelector('#wmt-text-input');
+    const size = box.querySelector('#wmt-size-input');
+
+    bg.value = get('wmt-bg', '#6264a7');
+    txt.value = get('wmt-text', '#ffffff');
+    size.value = get('wmt-size', '11');
+
+    bg.addEventListener('input', () => {
+      save('wmt-bg', bg.value);
+      applyLook();
+    });
+    txt.addEventListener('input', () => {
+      save('wmt-text', txt.value);
+      applyLook();
+    });
+    size.addEventListener('input', () => {
+      save('wmt-size', size.value);
+      applyLook();
+    });
+
+    applyLook();
+  }
+
+  function start() {
+    addButton();
+    addSettings();
+
+    if (!window.__wmtObserver) {
+      window.__wmtObserver = new MutationObserver(() => {
+        addButton();
+        addSettings();
+      });
+      window.__wmtObserver.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+
+    applyMode();
+    applyLook();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
+<!-- ===== END FOUR-QUARTER CELL ===== -->
+
+
+<!-- ===== EVENT COUNT BADGE SIZE SETTING ===== -->
+<style id="pl-header-badge-size-style">
+  .grid-hdr .hdr-cell[data-pl]::after {
+    font-size: var(--pl-hb-size, 14px) !important;
+    padding:
+      calc(var(--pl-hb-size, 14px) * 0.07)
+      calc(var(--pl-hb-size, 14px) * 0.43) !important;
+  }
+</style>
+
+<script id="pl-header-badge-size-script">
+(() => {
+  'use strict';
+
+  const KEY = 'pl-hb-size';
+  const DEFAULT = '14';
+
+  function init() {
+    const box = document.getElementById('pl-settings-box');
+    const textInput = document.getElementById('pl-hb-txt');
+
+    if (!box || !textInput || document.getElementById('pl-hb-size')) return;
+
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `
+      Розмір значка та числа
+      <input type="range" id="pl-hb-size"
+        min="8" max="30" step="1">
+    `;
+
+    textInput.closest('.row').after(row);
+
+    const slider = row.querySelector('#pl-hb-size');
+    let saved = DEFAULT;
+
+    try {
+      saved = localStorage.getItem(KEY) || DEFAULT;
+    } catch (_) {}
+
+    slider.value = saved;
+
+    function apply() {
+      const value = slider.value;
+      document.documentElement.style.setProperty(
+        '--pl-hb-size', value + 'px'
+      );
+      try {
+        localStorage.setItem(KEY, value);
+      } catch (_) {}
+    }
+
+    slider.addEventListener('input', apply);
+    apply();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init, { once: true });
+  } else {
+    init();
+  }
+})();
+</script>
+<!-- ===== END EVENT COUNT BADGE SIZE ===== -->
+
+<!-- START MONTH POPUP NOTE PREVIEW -->
+<script>
+(() => {
+  const MONTHS = ["Січ1","Лют2","Бер3","Кві4","Тра5","Чер6","Лип7","Сер8","Вер9","Жов10","Лис11","Гру12"];
+
+  function getNotes() {
+    try { return JSON.parse(localStorage.getItem('calendar_notes') || '{}') || {}; }
+    catch (_) { return {}; }
+  }
+
+  // Put the note text into title="" of every day button that has a note (same as the widget)
+  function apply() {
+    const box = document.getElementById('days-container');
+    const titleEl = document.getElementById('month-modal-title');
+    if (!box || !titleEl) return;
+
+    const m = titleEl.textContent.trim().match(/^(\S+)\s+(\d{4})$/);   // e.g. "Сер8 2026"
+    const mi = m ? MONTHS.indexOf(m[1]) : -1;
+    if (mi < 0) return;
+    const notes = getNotes();
+
+    box.querySelectorAll('.cal-btn[data-day]').forEach(btn => {
+      const note = notes[m[2] + '-' + mi + '-' + btn.dataset.day];
+      if (note && String(note).trim() !== '') btn.setAttribute('title', note);
+      else btn.removeAttribute('title');
+    });
+  }
+
+  function start() {
+    const box = document.getElementById('days-container');
+    if (!box) return;
+    // day buttons are rebuilt on every month click; has-note class changes after saving a note
+    new MutationObserver(apply).observe(box, {
+      childList: true, subtree: true, attributes: true, attributeFilter: ['class']
+    });
+    apply();
+  }
+
+  // the pop-up is created by app.js after the page loads
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => setTimeout(start, 0));
+  else setTimeout(start, 0);
+})();
+</script>
+<!-- END MONTH POPUP NOTE PREVIEW -->
+
+
+<!-- START POPUP DESIGN SETTINGS -->
+<script>
+(() => {
+  const ready = f => document.readyState === 'loading'
+    ? document.addEventListener('DOMContentLoaded', f) : f();
+  ready(() => setTimeout(init, 300));   // after the app and the other settings blocks are built
+
+  function init() {
+    const panel = document.getElementById('panel');
+    if (!panel || document.getElementById('pp-box-month')) return;
+
+    const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+    const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+    const del = k => { try { localStorage.removeItem(k); } catch (_) {} };
+
+    // ---------- selectors ----------
+    const M = '#month-modal', MC = M + ' .cal-modal-content';
+    const N_BOX   = '#day-modal .cal-modal-content, #mw-note-modal .mw-nm-box, #nm-preview .nm-box';
+    const N_TITLE = '#day-modal-title, #mw-note-modal .mw-nm-title, #nm-preview .nm-title';
+    const N_CLOSE = '#day-modal-close, #mw-note-modal .mw-nm-close, #nm-preview .nm-close';
+    const N_TA    = '#day-note-text, #mw-note-modal textarea, #nm-preview textarea';
+    const N_SAVE  = '#day-note-save, #mw-note-modal .mw-nm-save, #nm-preview .nm-save';
+
+    // ---------- real default values, read from the elements on the page ----------
+    const num = (el, p, fb) => { const n = el ? parseFloat(getComputedStyle(el)[p]) : NaN; return isNaN(n) ? fb : Math.round(n); };
+    const hex = (el, p, fb) => {
+      const m = el && (getComputedStyle(el)[p] || '').match(/rgba?\((\d+)[, ]+(\d+)[, ]+(\d+)(?:[, /]+([\d.]+))?/);
+      if (!m || (m[4] !== undefined && parseFloat(m[4]) === 0)) return fb;
+      return '#' + [m[1], m[2], m[3]].map(v => (+v).toString(16).padStart(2, '0')).join('');
+    };
+    const D = {};
+    (function probe() {
+      const mc = document.querySelector(MC);
+      const title = document.getElementById('month-modal-title');
+      const close = document.getElementById('month-modal-close');
+      const box = document.createElement('div');
+      box.className = 'cal-grid';
+      box.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
+      box.innerHTML = '<div class="cal-weekday">Пн</div><button class="cal-btn">1</button><button class="cal-btn has-note">2</button>';
+      if (mc) mc.appendChild(box);
+      const wd = box.querySelector('.cal-weekday'), b1 = box.children[1], b2 = box.children[2];
+
+      D['mp-ov'] = '#000000'; D['mp-ov-a'] = 50;
+      D['mp-bg'] = hex(mc, 'backgroundColor', '#ffffff');
+      D['mp-win-brd'] = '#000000';
+      D['mp-title'] = hex(title, 'color', '#000000');
+      D['mp-close'] = hex(close, 'color', '#666666');
+      D['mp-close-bg'] = hex(close, 'backgroundColor', '#ffffff');
+      D['mp-wd'] = hex(wd, 'color', '#000000');
+      D['mp-day-bg'] = hex(b1, 'backgroundColor', '#ffffff');
+      D['mp-day-txt'] = hex(b1, 'color', '#000000');
+      D['mp-day-brd'] = hex(b1, 'borderTopColor', '#cccccc');
+      D['mp-note-bg'] = hex(b2, 'backgroundColor', '#ffeb3b');
+      D['mp-note-brd'] = hex(b2, 'borderTopColor', '#fbc02d');
+      D['mp-today-brd'] = '#ff0000';
+
+      D['mp-w'] = num(mc, 'maxWidth', 400);
+      D['mp-pad'] = num(mc, 'paddingTop', 20);
+      D['mp-title-fs'] = num(title, 'fontSize', 18);
+      D['mp-close-fs'] = num(close, 'fontSize', 24);
+      D['mp-wd-fs'] = num(wd, 'fontSize', 16);
+      D['mp-gap'] = num(box, 'rowGap', 5);
+      D['mp-day-fs'] = num(b1, 'fontSize', 12);
+      D['mp-day-py'] = num(b1, 'paddingTop', 8);
+      D['mp-day-radius'] = num(b1, 'borderTopLeftRadius', 4);
+
+      D['mp-win-bw'] = num(mc, 'borderTopWidth', 0);
+      D['mp-title-fw'] = num(title, 'fontWeight', 700);
+      D['mp-wd-fw'] = num(wd, 'fontWeight', 400);
+      D['mp-day-fw'] = num(b1, 'fontWeight', 700);
+      D['mp-day-bw'] = num(b1, 'borderTopWidth', 1);
+      D['mp-note-bw'] = num(b2, 'borderTopWidth', 1);
+      D['mp-today-bw'] = 2;
+      box.remove();
+
+      // day-note window
+      const dm = document.querySelector('#day-modal .cal-modal-content');
+      const dt = document.getElementById('day-modal-title');
+      const dc = document.getElementById('day-modal-close');
+      const ta = document.getElementById('day-note-text');
+      const sv = document.getElementById('day-note-save');
+      D['nd-win-brd'] = '#000000';
+      D['nd-pad'] = num(dm, 'paddingTop', 20);
+      D['nd-title-fs'] = num(dt, 'fontSize', 18);
+      D['nd-close-fs'] = num(dc, 'fontSize', 24);
+      D['nd-ta-fs'] = num(ta, 'fontSize', 22);
+      D['nd-ta-pad'] = num(ta, 'paddingTop', 15);
+      D['nd-save-fs'] = num(sv, 'fontSize', 19);
+      D['nd-save-pad'] = num(sv, 'paddingTop', 15);
+      D['nd-save-radius'] = num(sv, 'borderTopLeftRadius', 4);
+      D['nd-win-bw'] = num(dm, 'borderTopWidth', 0);
+      D['nd-title-fw'] = num(dt, 'fontWeight', 700);
+      D['nd-ta-bw'] = num(ta, 'borderTopWidth', 1);
+      D['nd-ta-fw'] = num(ta, 'fontWeight', 400);
+      D['nd-save-fw'] = num(sv, 'fontWeight', 700);
+    })();
+
+    const toRgb = h => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+    const overlay = () => {
+      const c = toRgb(get('mp-ov') || '#000000');
+      const a = (get('mp-ov-a') === null ? 50 : +get('mp-ov-a')) / 100;
+      return M + '{background:rgba(' + c.join(',') + ',' + a + ') !important}';
+    };
+    const win = (sel, p) => {
+      const w = get(p + '-bw'), c = get(p + '-brd');
+      return sel + '{border:' + (w === null ? 1 : w) + 'px solid ' + (c || '#000000') + ' !important}';
+    };
+
+    // ---------- fields: [id, label, group, kind, min, max, step, unit, css(v)] ----------
+    const C = 'Кольори', S = 'Розміри', T = 'Товщина';
+    const MONTH = [
+      ['mp-ov', 'Фон за вікном (затемнення)', C, 'color', 0,0,0, '', overlay],
+      ['mp-ov-a', 'Прозорість затемнення', C, 'range', 0, 100, 5, '%', overlay],
+      ['mp-bg', 'Фон вікна', C, 'color', 0,0,0, '', v => MC + '{background:' + v + ' !important}'],
+      ['mp-win-brd', 'Колір рамки вікна', C, 'color', 0,0,0, '', () => win(MC, 'mp')],
+      ['mp-title', 'Колір заголовка', C, 'color', 0,0,0, '', v => '#month-modal-title{color:' + v + ' !important}'],
+      ['mp-close', 'Колір кнопки ×', C, 'color', 0,0,0, '', v => '#month-modal-close{color:' + v + ' !important}'],
+      ['mp-close-bg', 'Фон кнопки ×', C, 'color', 0,0,0, '', v => '#month-modal-close{background:' + v + ' !important}'],
+      ['mp-wd', 'Колір днів тижня', C, 'color', 0,0,0, '', v => M + ' .cal-weekday{color:' + v + ' !important}'],
+      ['mp-day-bg', 'Фон дня', C, 'color', 0,0,0, '', v => M + ' .cal-btn:not(.has-note){background:' + v + ' !important}'],
+      ['mp-day-txt', 'Колір цифр дня', C, 'color', 0,0,0, '', v => M + ' .cal-btn{color:' + v + ' !important}'],
+      ['mp-day-brd', 'Колір рамки дня', C, 'color', 0,0,0, '', v => M + ' .cal-btn:not(.has-note){border-color:' + v + ' !important}'],
+      ['mp-note-bg', 'Фон дня з нотаткою', C, 'color', 0,0,0, '', v => M + ' .cal-btn.has-note{background:' + v + ' !important}'],
+      ['mp-note-brd', 'Колір рамки дня з нотаткою', C, 'color', 0,0,0, '', v => M + ' .cal-btn.has-note{border-color:' + v + ' !important}'],
+      ['mp-today-brd', 'Колір рамки сьогоднішнього дня', C, 'color', 0,0,0, '', null],
+
+      ['mp-w', 'Ширина вікна', S, 'range', 200, 1400, 10, 'px', v => MC + '{max-width:' + v + 'px !important}'],
+      ['mp-pad', 'Відступ усередині вікна', S, 'range', 0, 60, 1, 'px', v => MC + '{padding:' + v + 'px !important}'],
+      ['mp-title-fs', 'Розмір заголовка', S, 'range', 10, 60, 1, 'px', v => '#month-modal-title{font-size:' + v + 'px !important}'],
+      ['mp-close-fs', 'Розмір кнопки ×', S, 'range', 12, 60, 1, 'px', v => '#month-modal-close{font-size:' + v + 'px !important}'],
+      ['mp-wd-fs', 'Розмір днів тижня', S, 'range', 8, 40, 1, 'px', v => M + ' .cal-weekday{font-size:' + v + 'px !important}'],
+      ['mp-gap', 'Відстань між днями', S, 'range', 0, 20, 1, 'px', v => M + ' .cal-grid{gap:' + v + 'px !important}'],
+      ['mp-day-fs', 'Розмір цифр дня', S, 'range', 8, 48, 1, 'px', v => M + ' .cal-btn{font-size:' + v + 'px !important}'],
+      ['mp-day-py', 'Висота кнопки дня (відступ)', S, 'range', 0, 30, 1, 'px', v => M + ' .cal-btn{padding:' + v + 'px 4px !important}'],
+      ['mp-day-radius', 'Заокруглення кнопки дня', S, 'range', 0, 30, 1, 'px', v => M + ' .cal-btn{border-radius:' + v + 'px !important}'],
+
+      ['mp-win-bw', 'Товщина рамки вікна', T, 'range', 0, 12, 1, 'px', () => win(MC, 'mp')],
+      ['mp-title-fw', 'Товщина шрифту заголовка', T, 'range', 100, 900, 100, '', v => '#month-modal-title{font-weight:' + v + ' !important}'],
+      ['mp-wd-fw', 'Товщина шрифту днів тижня', T, 'range', 100, 900, 100, '', v => M + ' .cal-weekday{font-weight:' + v + ' !important}'],
+      ['mp-day-fw', 'Товщина шрифту цифр дня', T, 'range', 100, 900, 100, '', v => M + ' .cal-btn{font-weight:' + v + ' !important}'],
+      ['mp-day-bw', 'Товщина рамки дня', T, 'range', 0, 8, 1, 'px', v => M + ' .cal-btn{border-width:' + v + 'px !important;border-style:solid !important}'],
+      ['mp-note-bw', 'Товщина рамки дня з нотаткою', T, 'range', 0, 8, 1, 'px', v => M + ' .cal-btn.has-note{border-width:' + v + 'px !important;border-style:solid !important}'],
+      ['mp-today-bw', 'Товщина рамки сьогоднішнього дня', T, 'range', 0, 8, 1, 'px', null]
+    ];
+
+    const NOTE = [
+      ['nd-win-brd', 'Колір рамки вікна', C, 'color', 0,0,0, '', () => win(N_BOX, 'nd')],
+
+      ['nd-pad', 'Відступ усередині вікна', S, 'range', 0, 80, 1, 'px', v => N_BOX + '{padding:' + v + 'px !important}'],
+      ['nd-title-fs', 'Розмір дати (заголовка)', S, 'range', 10, 60, 1, 'px', v => N_TITLE + '{font-size:' + v + 'px !important}'],
+      ['nd-close-fs', 'Розмір кнопки ×', S, 'range', 12, 60, 1, 'px', v => N_CLOSE + '{font-size:' + v + 'px !important}'],
+      ['nd-ta-fs', 'Розмір тексту нотатки', S, 'range', 10, 60, 1, 'px', v => N_TA + '{font-size:' + v + 'px !important}'],
+      ['nd-ta-pad', 'Відступ усередині поля тексту', S, 'range', 0, 40, 1, 'px', v => N_TA + '{padding:' + v + 'px !important}'],
+      ['nd-save-fs', 'Розмір тексту кнопки «Зберегти»', S, 'range', 10, 48, 1, 'px', v => N_SAVE + '{font-size:' + v + 'px !important}'],
+      ['nd-save-pad', 'Висота кнопки «Зберегти»', S, 'range', 0, 40, 1, 'px', v => N_SAVE + '{padding:' + v + 'px !important}'],
+      ['nd-save-radius', 'Заокруглення кнопки «Зберегти»', S, 'range', 0, 30, 1, 'px', v => N_SAVE + '{border-radius:' + v + 'px !important}'],
+
+      ['nd-win-bw', 'Товщина рамки вікна', T, 'range', 0, 12, 1, 'px', () => win(N_BOX, 'nd')],
+      ['nd-title-fw', 'Товщина шрифту дати', T, 'range', 100, 900, 100, '', v => N_TITLE + '{font-weight:' + v + ' !important}'],
+      ['nd-ta-bw', 'Товщина рамки поля тексту', T, 'range', 0, 10, 1, 'px', v => N_TA + '{border-width:' + v + 'px !important;border-style:solid !important}'],
+      ['nd-ta-fw', 'Товщина шрифту тексту нотатки', T, 'range', 100, 900, 100, '', v => N_TA + '{font-weight:' + v + ' !important}'],
+      ['nd-save-fw', 'Товщина шрифту кнопки «Зберегти»', T, 'range', 100, 900, 100, '', v => N_SAVE + '{font-weight:' + v + ' !important}']
+    ];
+    const ALL = MONTH.concat(NOTE);
+
+    // ---------- stylesheet: only values you changed are applied ----------
+    const st = document.createElement('style');
+    st.id = 'pp-design-style';
+    document.head.appendChild(st);
+
+    function fixToday() {
+      const brd = get('mp-today-brd'), bw = get('mp-today-bw');
+      document.querySelectorAll('#days-container .cal-btn[style*="border"]').forEach(b => {
+        if (brd) b.style.setProperty('border-color', brd, 'important');
+        if (bw !== null && bw !== '') b.style.setProperty('border-width', bw + 'px', 'important');
+      });
+    }
+    function build() {
+      let css = '';
+      ALL.forEach(f => {
+        const v = get(f[0]);
+        if (v === null || v === '' || !f[8]) return;
+        css += f[8](v) + '\n';
+      });
+      st.textContent = css;
+      fixToday();
+    }
+
+    // ---------- settings UI ----------
+    function makeBox(id, title, fields, resetText) {
+      const box = document.createElement('div');
+      box.id = id;
+      box.style.cssText = 'border-top:2px solid #6264a7;padding-top:12px;margin:15px 0;font-family:sans-serif;';
+      let html = '<h4 style="margin:0 0 10px 0;">' + title + '</h4>';
+      [C, S, T].forEach(g => {
+        const list = fields.filter(f => f[2] === g);
+        if (!list.length) return;
+        html += '<details style="margin-bottom:8px;"><summary style="cursor:pointer;font-weight:700;margin-bottom:6px;">' + g + '</summary>';
+        list.forEach(f => {
+          const ctl = f[3] === 'color'
+            ? '<input type="color" id="' + f[0] + '">'
+            : '<span style="display:flex;align-items:center;gap:6px;"><input type="range" id="' + f[0] +
+              '" min="' + f[4] + '" max="' + f[5] + '" step="' + f[6] + '"><b id="' + f[0] +
+              '-v" style="min-width:42px;text-align:right;"></b></span>';
+          html += '<div class="row"><span>' + f[1] + '</span>' + ctl + '</div>';
+        });
+        html += '</details>';
+      });
+      html += '<div class="row"><button type="button" class="pp-reset" style="width:100%;padding:6px;cursor:pointer;' +
+              'background:#e74c3c;color:#fff;border:none;border-radius:4px;font-weight:bold;">' + resetText + '</button></div>';
+      box.innerHTML = html;
+
+      const show = f => {
+        const el = box.querySelector('#' + f[0]);
+        el.value = get(f[0]) !== null ? get(f[0]) : D[f[0]];
+        const out = box.querySelector('#' + f[0] + '-v');
+        if (out) out.textContent = el.value + f[7];
+      };
+      fields.forEach(show);
+
+      box.addEventListener('input', e => {
+        const f = fields.find(x => x[0] === e.target.id);
+        if (!f) return;
+        set(f[0], e.target.value);
+        const out = box.querySelector('#' + f[0] + '-v');
+        if (out) out.textContent = e.target.value + f[7];
+        build();
+      });
+      box.querySelector('.pp-reset').onclick = () => {
+        fields.forEach(f => { del(f[0]); show(f); });
+        document.querySelectorAll('#days-container .cal-btn[style*="border"]').forEach(b => {
+          b.style.cssText = 'border: 2px solid #ff0000 !important;';
+        });
+        build();
+      };
+      return box;
+    }
+
+    const boxM = makeBox('pp-box-month', '📅 Вікно місяця (спливаюче)', MONTH, 'Скинути вікно місяця');
+    const boxN = makeBox('pp-box-note', '📝 Вікно нотатки: розміри і товщина', NOTE, 'Скинути розміри вікна нотатки');
+    const anchor = document.getElementById('nm-settings-box');
+    if (anchor) anchor.after(boxM, boxN);
+    else {
+      const saveBtn = panel.querySelector('button[onclick*="classList.remove(\'open\')"]');
+      if (saveBtn) { saveBtn.before(boxM); saveBtn.before(boxN); } else { panel.appendChild(boxM); panel.appendChild(boxN); }
+    }
+
+    // today's day button has an inline border: re-apply after every month rebuild
+    const days = document.getElementById('days-container');
+    if (days) new MutationObserver(fixToday).observe(days, { childList: true });
+
+    build();
+  }
+})();
+</script>
+<!-- END POPUP DESIGN SETTINGS -->
+
 </html>
