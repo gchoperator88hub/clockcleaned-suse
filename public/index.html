@@ -8375,4 +8375,411 @@ window.addEventListener('DOMContentLoaded', () => {
 </script>
 <!-- END FIX -->
 
+
+<!-- START SEASON MONTH LABELS TWEAK -->
+<script>
+(() => {
+  const SEASONS = ['winter', 'spring', 'summer', 'autumn'];
+  const NEW_MAX = 40; // old max was 18, so this is more than 2x
+
+  function applyTweak() {
+    const layer = document.getElementById('four-seasons-month-labels');
+    if (!layer) return false;
+
+    // 1) Month names: only 3 letters (Грудень -> Гру, Січень -> Січ ...)
+    layer.querySelectorAll('.four-seasons-month-label').forEach(label => {
+      if (!label.dataset.fullName) label.dataset.fullName = label.textContent;
+      label.textContent = Array.from(label.dataset.fullName).slice(0, 3).join('');
+    });
+
+    // 2) "Розмір тексту" sliders for all 4 seasons: bigger maximum
+    SEASONS.forEach(key => {
+      const input = document.getElementById('month-size-' + key);
+      if (!input) return;
+      const saved = input.value;   // keep the current value
+      input.max = NEW_MAX;
+      input.value = saved;
+    });
+
+    return true;
+  }
+
+  function run() {
+    try {
+      if (!applyTweak()) {
+        // original block not ready yet: retry a few times
+        let tries = 0;
+        const timer = setInterval(() => {
+          if (applyTweak() || ++tries > 20) clearInterval(timer);
+        }, 250);
+      }
+    } catch (e) {
+      console.warn('Season month labels tweak failed:', e);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
+</script>
+<!-- END SEASON MONTH LABELS TWEAK -->
+
+<!-- START YEAR DAY MARKER FIT -->
+<script>
+(() => {
+  function setup() {
+    const face = document.getElementById('face');
+    const marker = face && face.querySelector('.yrp-v2-marker');
+    if (!marker) return false;
+    if (marker.dataset.yrpFit) return true;
+    marker.dataset.yrpFit = '1';
+
+    function place() {
+      try {
+        // Same angle the original script uses: end of the "passed days" arc
+        const now = new Date();
+        const y = now.getFullYear();
+        const start = new Date(y, 0, 1);
+        const next = new Date(y + 1, 0, 1);
+        const day = Math.floor((now - start) / 86400000) + 1;
+        const total = Math.round((next - start) / 86400000);
+        const a = day / total * 2 * Math.PI;
+        const ux = Math.sin(a);    // direction from clock centre
+        const uy = -Math.cos(a);
+
+        // Inner edge of the year ring = padding-box radius of the face
+        const R = Math.min(face.clientWidth, face.clientHeight) / 2;
+        const cx = face.clientWidth / 2;
+        const cy = face.clientHeight / 2;
+
+        // Half size of the number box (digit height is about 0.72em)
+        const fs = parseFloat(getComputedStyle(marker).fontSize) || 18;
+        const hw = marker.offsetWidth / 2;
+        const hh = fs * 0.72 / 2;
+
+        // Corner of the box that is farthest from the centre
+        const sw = (ux < 0 ? -1 : 1) * hw;
+        const sh = (uy < 0 ? -1 : 1) * hh;
+
+        // Distance d along the ray so that this corner touches the inner circle
+        const dot = ux * sw + uy * sh;
+        const disc = dot * dot - (sw * sw + sh * sh) + R * R;
+        const d = disc > 0 ? -dot + Math.sqrt(disc) : 0;
+
+        const left = (cx + ux * d).toFixed(1) + 'px';
+        const top  = (cy + uy * d).toFixed(1) + 'px';
+        if (marker.style.left !== left) marker.style.left = left;
+        if (marker.style.top  !== top)  marker.style.top  = top;
+      } catch (e) {
+        console.warn('Year day marker fit failed:', e);
+      }
+    }
+
+    // Re-place after the original script moves it, or when size/text changes
+    new MutationObserver(place).observe(marker, {
+      attributes: true, attributeFilter: ['style'],
+      childList: true, characterData: true, subtree: true
+    });
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(place);
+      ro.observe(face);
+      ro.observe(marker);
+    }
+    window.addEventListener('resize', place);
+    ['yrp-v2-marker-size', 'v-clk-brd-w'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => setTimeout(place, 0));
+    });
+
+    place();
+    return true;
+  }
+
+  function run() {
+    if (setup()) return;
+    let tries = 0;
+    const timer = setInterval(() => {
+      if (setup() || ++tries > 20) clearInterval(timer);
+    }, 250);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', run);
+  } else {
+    run();
+  }
+})();
+</script>
+<!-- END YEAR DAY MARKER FIT -->
+
+<!-- START TODAY COLUMN TOP BUTTON -->
+<style id="td-top-style">
+  .hdr-cell.today { position: relative; }
+  .hdr-cell:not(.today) > .td-top-btn { display: none; }
+
+  /* Round button, upper left corner of today's header cell */
+  .td-top-btn {
+    position: absolute; top: 4px; left: 4px; z-index: 6;
+    width: var(--td-btn-s, 22px); height: var(--td-btn-s, 22px);
+    min-width: 0; min-height: 0; padding: 0; margin: 0;
+    box-sizing: border-box;
+    border: 2px solid #000; border-radius: 50%;
+    background: var(--td-btn-c, #ffd600);
+    font-size: 0; line-height: 0; color: transparent;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  }
+
+  /* Triangle drawn as a shape: always 50% x 45% of the button, so it scales with it */
+  .td-top-btn::before {
+    content: "";
+    display: block;
+    flex: none;
+    width: 50%;
+    height: 45%;
+    background: #000;
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);   /* pointing up */
+  }
+
+  /* Mode 1: today's column on top -> triangle points down + ring around the button */
+  html[data-td-top="1"] .td-top-btn::before { transform: rotate(180deg); }
+  html[data-td-top="1"] .td-top-btn { box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000; }
+</style>
+
+<script>
+(() => {
+  const root = document.documentElement;
+  const get = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (_) { return d; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+  const isOn = () => root.getAttribute('data-td-top') === '1';
+
+  // Full-screen dialogs: the column steps back while one is open, so it never hides them
+  const MODALS = '.cal-modal, [id$="modal"], #alarm2-modal, #nm-preview, #fy-window, #pl-next.nef-fullscreen';
+  // Original look of the column, re-applied after the browser's default popover styles
+  const KEEP = ['paddingTop','paddingRight','paddingBottom','paddingLeft',
+                'marginTop','marginRight','marginBottom','marginLeft',
+                'borderTopWidth','borderLeftWidth','borderBottomWidth',
+                'overflowX','overflowY','backgroundColor','color','boxSizing'];
+
+  let cur = null;          // { col, ph, style }
+  let raf = 0, modalOpen = false, modalTs = 0;
+
+  function raise(col) {
+    if (!col.showPopover) { console.warn('Popover API is not supported by this browser'); return false; }
+    const cs = getComputedStyle(col);
+    const r = col.getBoundingClientRect();
+    const keep = KEEP.map(p => [p, cs[p]]);
+
+    // placeholder keeps the column's place in the table layout
+    const ph = document.createElement('div');
+    ph.className = 'td-top-ph';
+    ph.style.cssText = 'flex:' + cs.flex + ';width:' + r.width + 'px;height:' + r.height +
+      'px;min-width:' + cs.minWidth + ';box-sizing:border-box;visibility:hidden;pointer-events:none;';
+    col.before(ph);
+
+    cur = { col, ph, style: col.getAttribute('style') };
+    col.setAttribute('popover', 'manual');
+    try { col.showPopover(); } catch (e) { ph.remove(); col.removeAttribute('popover'); cur = null; return false; }
+
+    col.style.setProperty('inset', 'auto');
+    col.style.setProperty('position', 'fixed');
+    col.style.setProperty('height', 'auto');
+    keep.forEach(([p, v]) => { col.style[p] = v; });
+    return true;
+  }
+
+  function lower() {
+    if (!cur) return;
+    const { col, ph, style } = cur;
+    try { col.hidePopover(); } catch (_) {}
+    col.removeAttribute('popover');
+    if (style === null) col.removeAttribute('style'); else col.setAttribute('style', style);
+    ph.remove();
+    cur = null;
+  }
+
+  function position() {
+    const { col, ph } = cur;
+    const r = ph.getBoundingClientRect();
+    const sc = document.querySelector('.scroller');
+    const s = sc ? sc.getBoundingClientRect() : r;
+
+    col.style.left = r.left + 'px';
+    col.style.top = r.top + 'px';
+    col.style.width = r.width + 'px';
+
+    const h = col.offsetHeight;
+    if (h && Math.abs(h - ph.offsetHeight) > 0.5) ph.style.height = h + 'px';
+
+    // show only the part inside the table viewport
+    const top = Math.max(0, s.top - r.top);
+    const bottom = Math.max(0, r.bottom - s.bottom);
+    const clip = 'inset(' + top + 'px 0 ' + bottom + 'px 0)';
+    if (col.style.clipPath !== clip) col.style.clipPath = clip;
+  }
+
+  function checkModals(now) {
+    if (now - modalTs < 200) return;
+    modalTs = now;
+    modalOpen = false;
+    for (const el of document.querySelectorAll(MODALS)) {
+      const cs = getComputedStyle(el);
+      if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width > innerWidth * 0.4 && r.height > innerHeight * 0.3) { modalOpen = true; break; }
+    }
+  }
+
+  // settings panel is only a problem when it overlaps the column
+  function panelOverlaps(slot) {
+    const p = document.getElementById('panel');
+    if (!p || !p.classList.contains('open') || !slot) return false;
+    const a = p.getBoundingClientRect(), b = slot.getBoundingClientRect();
+    return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+  }
+
+  function frame(now) {
+    raf = 0;
+    if (!isOn()) return;
+    try {
+      const target = document.querySelector('#grid-main .day-column.today-col');
+      checkModals(now);
+      const blocked = modalOpen || panelOverlaps(cur ? cur.ph : target);
+
+      if (cur && (cur.col !== target || blocked || !target.isConnected)) lower();
+      if (!cur && target && !blocked) raise(target);
+      if (cur) position();
+    } catch (e) {
+      console.warn('Today column on top failed:', e);
+    }
+    raf = requestAnimationFrame(frame);   // follows the moving table every frame
+  }
+
+  function applyMode() {
+    root.setAttribute('data-td-top', get('td-top-mode', '0'));
+    cancelAnimationFrame(raf); raf = 0;
+    if (isOn()) raf = requestAnimationFrame(frame);
+    else lower();                          // everything back exactly as it was
+  }
+
+  // layout changed: put the column back, the loop raises it again with new sizes
+  window.addEventListener('resize', () => { lower(); });
+
+  function applyLook() {
+    root.style.setProperty('--td-btn-c', get('td-top-btn-c', '#ffd600'));
+    root.style.setProperty('--td-btn-s', get('td-top-btn-s', '22') + 'px');
+  }
+
+  const addButtons = () => {
+    document.querySelectorAll('#hdr-row .hdr-cell').forEach((cell, i) => {
+      if (i === 0 || cell.querySelector('.td-top-btn')) return;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'td-top-btn';
+      b.title = 'Колонка сьогодні поверх усього / як було';
+      cell.appendChild(b);
+    });
+  };
+
+  // Capture phase: the header cell's own click handlers (day editor) are not triggered
+  window.addEventListener('click', e => {
+    if (!e.target.closest || !e.target.closest('.td-top-btn')) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    set('td-top-mode', isOn() ? '0' : '1');
+    applyMode();
+  }, true);
+
+  function start() {
+    applyLook();
+    addButtons();
+    applyMode();
+
+    const hdr = document.getElementById('hdr-row');
+    if (hdr) new MutationObserver(addButtons).observe(hdr, { childList: true });
+
+    // Settings rows in the "Таблиця" section
+    if (document.getElementById('td-btn-c')) return;
+    const anchor = document.getElementById('hf-row-w') ||
+      document.getElementById('v-today-c')?.closest('.row');
+    if (!anchor) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML =
+      '<div class="row">Кнопка сьогодні (колір) <input type="color" id="td-btn-c"></div>' +
+      '<div class="row">Кнопка сьогодні (розмір, px) ' +
+      '<input type="range" id="td-btn-s" min="14" max="60" step="1"></div>';
+    anchor.after(...wrap.children);
+
+    const c = document.getElementById('td-btn-c');
+    const s = document.getElementById('td-btn-s');
+    c.value = get('td-top-btn-c', '#ffd600');
+    s.value = get('td-top-btn-s', '22');
+    c.addEventListener('input', () => { set('td-top-btn-c', c.value); applyLook(); });
+    s.addEventListener('input', () => { set('td-top-btn-s', s.value); applyLook(); });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END TODAY COLUMN TOP BUTTON -->
+
+<!-- START CLOCK WIDGET HIT AREA FIX -->
+<style id="clk-hit-style">
+  /* The widget box (as wide as the time/date line) no longer catches the mouse */
+  #master-widget { pointer-events: none !important; }
+
+  /* Interactive parts only: the round frame, the time/date line, the alarm buttons */
+  #master-widget #face,
+  #master-widget .digit-info,
+  #master-widget button[id$="-time-btn"] { pointer-events: auto !important; }
+
+  /* Inside the frame, only the circle itself catches the mouse
+     (rotated number squares, hands and rings stay "transparent") */
+  #master-widget #face > * { pointer-events: none !important; }
+
+  /* Alarms that are not set ("--:--"): smallest possible button, centred */
+  #master-widget button.td-al-idle {
+    display: block !important;
+    width: fit-content !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 2px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+    line-height: 1.1 !important;
+  }
+</style>
+
+<script>
+(() => {
+  let queued = false;
+
+  // mark alarm buttons that show "--:--" (alarm not active)
+  function update() {
+    queued = false;
+    document.querySelectorAll('#master-widget button[id$="-time-btn"]').forEach(b => {
+      b.classList.toggle('td-al-idle', /^\s*[-–]+:[-–]+\s*$/.test(b.textContent));
+    });
+  }
+  const queue = () => { if (!queued) { queued = true; requestAnimationFrame(update); } };
+
+  function start() {
+    const w = document.getElementById('master-widget');
+    if (!w) return;
+    update();
+    // alarm buttons 2 and 3 are created later; texts change every second
+    new MutationObserver(queue).observe(w, { childList: true, subtree: true, characterData: true });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END CLOCK WIDGET HIT AREA FIX -->
+
 </html>
