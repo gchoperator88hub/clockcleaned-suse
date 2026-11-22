@@ -740,7 +740,7 @@ window.addEventListener('DOMContentLoaded', () => {
         Довжина хвилинної стрілки (%) <input type="range" id="f-h-size-m" min="25" max="50" step="1" value="38">
       </div>
       <div class="row">
-        Товщина стрілок (px) <input type="range" id="f-h-width" min="1" max="10" step="1" value="4">
+        Товщина стрілок (px) <input type="range" id="f-h-width" min="1" max="30" step="1" value="4">
       </div>
     `;
     snoozeRow.after(handsContainer);
@@ -1715,10 +1715,10 @@ window.addEventListener('DOMContentLoaded', () => {
     wrapper.style.cssText = "border-top: 1px dashed #ccc; padding-top: 10px; margin-top: 10px;";
     wrapper.innerHTML = `
       <div class="row">Годинна (колір) <input type="color" id="v-h-hand-c" value="#323130" /></div>
-      <div class="row">Годинна (товщина) <input type="range" id="v-h-hand-w" min="1" max="15" value="8" /></div>
+      <div class="row">Годинна (товщина) <input type="range" id="v-h-hand-w" min="1" max="25" value="8" /></div>
       <div class="row">Годинна (довжина %) <input type="range" id="v-h-hand-h" min="15" max="50" value="26" /></div>
       <div class="row">Хвилинна (колір) <input type="color" id="v-m-hand-c" value="#605e5c" /></div>
-      <div class="row">Хвилинна (товщина) <input type="range" id="v-m-hand-w" min="1" max="12" value="5" /></div>
+      <div class="row">Хвилинна (товщина) <input type="range" id="v-m-hand-w" min="1" max="20" value="5" /></div>
       <div class="row">Хвилинна (довжина %) <input type="range" id="v-m-hand-h" min="20" max="50" value="38" /></div>
       <div class="row">Секундна (колір) <input type="color" id="v-s-hand-c" value="#d93b3b" /></div>
       <div class="row">Секундна (товщина) <input type="range" id="v-s-hand-w" min="1" max="8" value="2" /></div>
@@ -9983,5 +9983,387 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 <!-- END TEXT-ONLY FRAME: MONTH NAMES - FIXED -->
+
+<!-- START HAND CIRCLES WITH MINUTES / SECONDS -->
+<style id="td-hc-style">
+  .td-hand-circle {
+    position: absolute; z-index: 25; pointer-events: none;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; box-sizing: border-box; line-height: 1;
+    transform: translate(-50%, -50%);
+  }
+</style>
+<script>
+(() => {
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+
+  const HANDS = {
+    m: { hand: 'm-h', name: 'Хвилинна', after: 'v-m-hand-w', def: { show: 1, c: '#000000', fs: 14, fw: 800, size: 28, bg: '#ffffff', pos: 70 } },
+    s: { hand: 's-h', name: 'Секундна', after: 'v-s-hand-w', def: { show: 1, c: '#000000', fs: 14, fw: 800, size: 28, bg: '#ffff00', pos: 80 } }
+  };
+  // [key, label, type, min, max, step]
+  const FIELDS = [
+    ['show', 'кружок з цифрою (показати)', 'checkbox'],
+    ['c',    'кружок: цифри (колір)',      'color'],
+    ['fs',   'кружок: цифри (розмір px)',  'range', 8, 60, 1],
+    ['fw',   'кружок: цифри (товщина)',    'range', 100, 900, 100],
+    ['size', 'кружок: розмір (px)',        'range', 12, 90, 1],
+    ['bg',   'кружок: фон (колір)',        'color'],
+    ['pos',  'кружок: позиція на стрілці %', 'range', 0, 120, 1]
+  ];
+
+  const K = (h, f) => 'td-hc-' + h + '-' + f;
+  const val = (h, f) => { const v = get(K(h, f)); return v !== null ? v : HANDS[h].def[f]; };
+  const circles = {};
+
+  // ---------- circles ----------
+  function update(h) {
+    const H = HANDS[h], hand = document.getElementById(H.hand), face = document.getElementById('face');
+    const el = circles[h];
+    if (!hand || !face || !el) return;
+
+    if (String(val(h, 'show')) === '0') { el.style.display = 'none'; return; }
+    el.style.display = 'flex';
+
+    // angle = the hand's own rotation, so the number always matches the hand
+    const m = /rotate\((-?[\d.]+)deg\)/.exec(hand.style.transform || '');
+    const now = new Date();
+    const ang = m ? ((parseFloat(m[1]) % 360) + 360) % 360
+      : (h === 'm' ? now.getMinutes() * 6 + now.getSeconds() * 0.1 : now.getSeconds() * 6);
+    const n = h === 'm' ? Math.floor(ang / 6 + 1e-6) % 60 : Math.round(ang / 6) % 60;
+    el.textContent = String(n).padStart(2, '0');
+
+    // position along the hand (center of the face is the hand's pivot)
+    const d = hand.offsetHeight * (+val(h, 'pos')) / 100;
+    const r = ang * Math.PI / 180;
+    el.style.left = (face.clientWidth / 2 + Math.sin(r) * d).toFixed(1) + 'px';
+    el.style.top  = (face.clientHeight / 2 - Math.cos(r) * d).toFixed(1) + 'px';
+
+    el.style.width = el.style.height = val(h, 'size') + 'px';
+    el.style.fontSize = val(h, 'fs') + 'px';
+    el.style.fontWeight = val(h, 'fw');
+    el.style.color = val(h, 'c');
+    el.style.background = val(h, 'bg');
+  }
+  const updateAll = () => Object.keys(HANDS).forEach(update);
+
+  function initCircles() {
+    const face = document.getElementById('face');
+    if (!face || !document.getElementById('m-h') || !document.getElementById('s-h')) return false;
+    Object.keys(HANDS).forEach(h => {
+      if (circles[h]) return;
+      const el = document.createElement('div');
+      el.className = 'td-hand-circle';
+      face.appendChild(el);
+      circles[h] = el;
+
+      const hand = document.getElementById(HANDS[h].hand);
+      // the app rotates the hands every second: follow it
+      new MutationObserver(() => update(h)).observe(hand, { attributes: true, attributeFilter: ['style'] });
+      // hand length / face size changes
+      if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => update(h));
+        ro.observe(hand); ro.observe(face);
+      }
+    });
+    updateAll();
+    return true;
+  }
+
+  // ---------- settings rows ----------
+  function addRows() {
+    if (document.getElementById(K('m', 'pos'))) return true;
+    for (const h in HANDS) if (!document.getElementById(HANDS[h].after)) return false;
+
+    Object.keys(HANDS).forEach(h => {
+      const H = HANDS[h];
+      const rows = FIELDS.map(f => {
+        const id = K(h, f[0]), v = val(h, f[0]);
+        const row = document.createElement('div');
+        row.className = 'row';
+        if (f[2] === 'checkbox') {
+          row.innerHTML = H.name + ' ' + f[1] + ' <input type="checkbox" id="' + id + '"' + (String(v) === '0' ? '' : ' checked') + '>';
+        } else if (f[2] === 'color') {
+          row.innerHTML = H.name + ' ' + f[1] + ' <input type="color" id="' + id + '" value="' + v + '">';
+        } else {
+          row.innerHTML = H.name + ' ' + f[1] + ' <span style="display:flex;align-items:center;gap:6px;">' +
+            '<input type="range" id="' + id + '" min="' + f[3] + '" max="' + f[4] + '" step="' + f[5] + '" value="' + v + '">' +
+            '<b id="' + id + '-v" style="min-width:28px;text-align:right;">' + v + '</b></span>';
+        }
+        return row;
+      });
+      document.getElementById(H.after).closest('.row').after(...rows);
+    });
+    return true;
+  }
+
+  function onChange(e) {
+    const m = /^td-hc-([ms])-(\w+)$/.exec(e.target.id || '');
+    if (!m) return;
+    set(e.target.id, e.target.type === 'checkbox' ? (e.target.checked ? '1' : '0') : e.target.value);
+    const out = document.getElementById(e.target.id + '-v');
+    if (out) out.textContent = e.target.value;
+    update(m[1]);
+  }
+  document.addEventListener('input', onChange);
+  document.addEventListener('change', onChange);
+
+  function start() {
+    let tries = 0;
+    const t = setInterval(() => {
+      const a = initCircles(), b = addRows();
+      if ((a && b) || ++tries > 40) clearInterval(t);
+    }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END HAND CIRCLES WITH MINUTES / SECONDS -->
+
+<!-- START DIGITAL TEXT: FRAME -->
+<style id="td-dg-style"></style>
+<script>
+(() => {
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+  const style = document.getElementById('td-dg-style');
+
+  // outline = rings of text shadows around every letter
+  function outline(w, c) {
+    const s = [], rings = Math.max(1, Math.ceil(w / 2.5));
+    for (let k = 1; k <= rings; k++) {
+      const r = w * k / rings;
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8;
+        s.push((Math.cos(a) * r).toFixed(2) + 'px ' + (Math.sin(a) * r).toFixed(2) + 'px 0 ' + c);
+      }
+    }
+    return s.join(',');
+  }
+
+  // frame is applied only when thickness > 0, so the default look stays as it is
+  function build() {
+    const w = parseFloat(get('td-dg-fr-w'));
+    const c = get('td-dg-fr-c') || '#000000';
+    style.textContent = w > 0
+      ? '#v-time, #v-date { text-shadow: ' + outline(w, c) + ' !important; }'
+      : '';
+  }
+
+  function addRows() {
+    if (document.getElementById('td-dg-fr-w')) return true;
+    const anchor = document.getElementById('v-dig-c');
+    if (!anchor || !anchor.closest('.row')) return false;
+
+    const w = get('td-dg-fr-w') ?? 0;
+    const c = get('td-dg-fr-c') ?? '#000000';
+
+    const r1 = document.createElement('div');
+    r1.className = 'row';
+    r1.innerHTML = 'Рамка тексту digital (товщина) <span style="display:flex;align-items:center;gap:6px;">' +
+      '<input type="range" id="td-dg-fr-w" min="0" max="12" step="0.5" value="' + w + '">' +
+      '<b id="td-dg-fr-w-v" style="min-width:24px;text-align:right;">' + w + '</b></span>';
+
+    const r2 = document.createElement('div');
+    r2.className = 'row';
+    r2.innerHTML = 'Рамка тексту digital (колір) <input type="color" id="td-dg-fr-c" value="' + c + '">';
+
+    anchor.closest('.row').after(r1, r2);
+    return true;
+  }
+
+  document.addEventListener('input', e => {
+    if (e.target.id !== 'td-dg-fr-w' && e.target.id !== 'td-dg-fr-c') return;
+    set(e.target.id, e.target.value);
+    const out = document.getElementById(e.target.id + '-v');
+    if (out) out.textContent = e.target.value;
+    build();
+  });
+
+  function start() {
+    build();                                     // restore saved frame after reload
+    let tries = 0;
+    const t = setInterval(() => { if (addRows() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END DIGITAL TEXT: FRAME -->
+
+<!-- START BADGE TIME: TEXT FRAME -->
+<style id="td-nb-style"></style>
+<script>
+(() => {
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+  const style = document.getElementById('td-nb-style');
+
+  // outline = rings of text shadows around every digit
+  function outline(w, c) {
+    const s = [], rings = Math.max(1, Math.ceil(w / 2.5));
+    for (let k = 1; k <= rings; k++) {
+      const r = w * k / rings;
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8;
+        s.push((Math.cos(a) * r).toFixed(2) + 'px ' + (Math.sin(a) * r).toFixed(2) + 'px 0 ' + c);
+      }
+    }
+    return s.join(',');
+  }
+
+  // frame is applied only when thickness > 0, so the default look stays as it is
+  function build() {
+    const w = parseFloat(get('td-nb-fr-w'));
+    const c = get('td-nb-fr-c') || '#000000';
+    style.textContent = w > 0
+      ? 'body .cell.now-cell::before, #nb-float { text-shadow: ' + outline(w, c) + ' !important; }'
+      : '';
+  }
+
+  function addRows() {
+    if (document.getElementById('td-nb-fr-w')) return true;
+    const anchor = document.getElementById('v-now-badge-c');
+    if (!anchor || !anchor.closest('.row')) return false;
+
+    const w = get('td-nb-fr-w') ?? 0;
+    const c = get('td-nb-fr-c') ?? '#000000';
+
+    const r1 = document.createElement('div');
+    r1.className = 'row';
+    r1.innerHTML = 'Badge час: рамка тексту (товщина) <span style="display:flex;align-items:center;gap:6px;">' +
+      '<input type="range" id="td-nb-fr-w" min="0" max="8" step="0.5" value="' + w + '">' +
+      '<b id="td-nb-fr-w-v" style="min-width:24px;text-align:right;">' + w + '</b></span>';
+
+    const r2 = document.createElement('div');
+    r2.className = 'row';
+    r2.innerHTML = 'Badge час: рамка тексту (колір) <input type="color" id="td-nb-fr-c" value="' + c + '">';
+
+    anchor.closest('.row').after(r1, r2);
+    return true;
+  }
+
+  document.addEventListener('input', e => {
+    if (e.target.id !== 'td-nb-fr-w' && e.target.id !== 'td-nb-fr-c') return;
+    set(e.target.id, e.target.value);
+    const out = document.getElementById(e.target.id + '-v');
+    if (out) out.textContent = e.target.value;
+    build();
+  });
+
+  function start() {
+    build();                                     // restore saved frame after reload
+    let tries = 0;
+    const t = setInterval(() => { if (addRows() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END BADGE TIME: TEXT FRAME -->
+
+<!-- START ALARM HANDS: SEPARATE THICKNESS -->
+<style id="td-al-style">
+  /* minute hand of alarm 1 gets its own thickness */
+  #alarm-marker-wrap div[style*="rotate"]:nth-of-type(2) {
+    width: var(--al-m-width, 4px) !important;
+  }
+</style>
+<script>
+(() => {
+  const root = document.documentElement;
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+
+  function init() {
+    const hw = document.getElementById('f-h-width');
+    const lenM = document.getElementById('f-h-size-m');
+    if (!hw || !lenM || document.getElementById('td-al-m-width')) return false;
+
+    // existing slider = hour hand only (max 15; saved value restored without the old limit of 10)
+    hw.max = 30;
+    const savedH = get('fc_width');
+    if (savedH) { hw.value = savedH; root.style.setProperty('--al-h-width', savedH + 'px'); }
+    const row = hw.closest('.row');
+    const txt = row && Array.from(row.childNodes).find(n => n.nodeType === 3 && n.textContent.includes('Товщина'));
+    if (txt) txt.textContent = ' Товщина годинної стрілки (px) ';
+
+    // new slider = minute hand only
+    const savedM = get('td-al-m-width') || '4';
+    root.style.setProperty('--al-m-width', savedM + 'px');
+    const mRow = document.createElement('div');
+    mRow.className = 'row';
+    mRow.innerHTML = 'Товщина хвилинної стрілки (px) ' +
+      '<input type="range" id="td-al-m-width" min="1" max="15" step="1" value="' + savedM + '">';
+    lenM.closest('.row').after(mRow);
+
+    mRow.querySelector('input').addEventListener('input', e => {
+      set('td-al-m-width', e.target.value);
+      root.style.setProperty('--al-m-width', e.target.value + 'px');
+    });
+    return true;
+  }
+
+  function start() {
+    let tries = 0;
+    const t = setInterval(() => { if (init() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END ALARM HANDS: SEPARATE THICKNESS -->
+
+<!-- START ALARM HANDS: SEPARATE COLOR -->
+<style id="td-al-color-style">
+  /* minute hand of alarm 1 gets its own colour (falls back to the hour colour until you change it) */
+  #alarm-marker-wrap div[style*="rotate"]:nth-of-type(2) {
+    background: var(--al-m-color, var(--al-h-color, #005a9c)) !important;
+  }
+</style>
+<script>
+(() => {
+  const root = document.documentElement;
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+
+  function init() {
+    const hc = document.getElementById('f-h-color');
+    if (!hc || document.getElementById('td-al-m-color')) return false;
+    const hRow = hc.closest('.row');
+    if (!hRow) return false;
+
+    // existing colour = hour hand only
+    const txt = Array.from(hRow.childNodes).find(n => n.nodeType === 3 && n.textContent.includes('Колір'));
+    if (txt) txt.textContent = ' Колір годинної стрілки будильника ';
+
+    // new colour = minute hand only
+    const saved = get('td-al-m-color');
+    if (saved) root.style.setProperty('--al-m-color', saved);
+
+    const mRow = document.createElement('div');
+    mRow.className = 'row';
+    mRow.innerHTML = 'Колір хвилинної стрілки будильника ' +
+      '<input type="color" id="td-al-m-color" value="' + (saved || get('fc_color') || '#005a9c') + '">';
+    hRow.after(mRow);
+
+    mRow.querySelector('input').addEventListener('input', e => {
+      set('td-al-m-color', e.target.value);
+      root.style.setProperty('--al-m-color', e.target.value);
+    });
+    return true;
+  }
+
+  function start() {
+    let tries = 0;
+    const t = setInterval(() => { if (init() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END ALARM HANDS: SEPARATE COLOR -->
 
 </html>
