@@ -7812,7 +7812,7 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="row">
             Розмір тексту
             <input id="month-size-${season.key}"
-              type="range" min="6" max="18" step="1">
+              type="range" min="6" max="40" step="1">
           </div>
 
           <div class="row">
@@ -9375,5 +9375,613 @@ window.addEventListener('DOMContentLoaded', () => {
 })();
 </script>
 <!-- END POPUP DESIGN SETTINGS -->
+
+<!-- START CLOCK NUMBERS: THICKNESS + FRAME -->
+<style id="td-num-style"></style>
+<script>
+(() => {
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+
+  // [id, label, type, min, max, step, default, row to insert after]
+  const FIELDS = [
+    ['td-num-fw',   'Товщина цифр годинника',          'range', 100, 900, 100, 700, 'v-num-size-custom'],
+    ['td-num-fr-w', 'Рамка цифр: товщина (px)',        'range', 0,   8,   0.5, 0,   'v-num-size-custom'],
+    ['td-num-fr-c', 'Рамка цифр: колір',               'color', 0,   0,   0,   '#000000', 'v-num-size-custom'],
+    ['td-pm-fw',    'PM цифри (товщина)',              'range', 100, 900, 100, 800, 'v-pm-num-fs'],
+    ['td-pm-fr-w',  'Рамка PM цифр: товщина (px)',     'range', 0,   8,   0.5, 0,   'v-pm-num-fs'],
+    ['td-pm-fr-c',  'Рамка PM цифр: колір',            'color', 0,   0,   0,   '#000000', 'v-pm-num-fs']
+  ];
+
+  const style = document.getElementById('td-num-style');
+
+  // outline = ring of text shadows around every digit
+  function outline(w, c) {
+    const s = [];
+    (w > 2 ? [w, w / 2] : [w]).forEach(r => {
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8;
+        s.push((Math.cos(a) * r).toFixed(2) + 'px ' + (Math.sin(a) * r).toFixed(2) + 'px 0 ' + c);
+      }
+    });
+    return s.join(',');
+  }
+
+  // only values you changed are applied, so the default look stays as it is
+  function build() {
+    let css = '';
+    [['num', '#face .num span'], ['pm', '#face .pm-number-mark']].forEach(([p, sel]) => {
+      const fw = get('td-' + p + '-fw');
+      const w = parseFloat(get('td-' + p + '-fr-w'));
+      const c = get('td-' + p + '-fr-c') || '#000000';
+      let d = '';
+      if (fw !== null) d += 'font-weight:' + fw + ' !important;';
+      if (w > 0) d += 'text-shadow:' + outline(w, c) + ' !important;';
+      if (d) css += sel + '{' + d + '}\n';
+    });
+    style.textContent = css;
+  }
+
+  function addRows() {
+    if (document.getElementById('td-num-fw')) return true;
+    const anchors = {};
+    for (const id of ['v-num-size-custom', 'v-pm-num-fs']) {
+      const el = document.getElementById(id);
+      if (!el) return false;                      // PM rows are created a bit later by the app
+      anchors[id] = el.closest('.row');
+    }
+    Object.keys(anchors).forEach(aid => {
+      const rows = FIELDS.filter(f => f[7] === aid).map(f => {
+        const row = document.createElement('div');
+        row.className = 'row';
+        const saved = get(f[0]);
+        const val = saved !== null ? saved : f[6];
+        row.innerHTML = f[2] === 'color'
+          ? f[1] + ' <input type="color" id="' + f[0] + '" value="' + val + '">'
+          : f[1] + ' <span style="display:flex;align-items:center;gap:6px;"><input type="range" id="' + f[0] +
+            '" min="' + f[3] + '" max="' + f[4] + '" step="' + f[5] + '" value="' + val +
+            '"><b id="' + f[0] + '-v" style="min-width:28px;text-align:right;">' + val + '</b></span>';
+        return row;
+      });
+      anchors[aid].after(...rows);
+    });
+    return true;
+  }
+
+  document.addEventListener('input', e => {
+    const f = FIELDS.find(x => x[0] === e.target.id);
+    if (!f) return;
+    set(f[0], e.target.value);
+    const out = document.getElementById(f[0] + '-v');
+    if (out) out.textContent = e.target.value;
+    build();
+  });
+
+  function start() {
+    build();                                      // restore saved look after reload
+    let tries = 0;
+    const t = setInterval(() => { if (addRows() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END CLOCK NUMBERS: THICKNESS + FRAME -->
+
+<!-- START SEASON MONTH NAMES: FRAME -->
+<style id="td-ms-style"></style>
+<script>
+(() => {
+  const get = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
+  const set = (k, v) => { try { localStorage.setItem(k, v); } catch (_) {} };
+
+  // labels are created in this order: 3 winter, 3 spring, 3 summer, 3 autumn
+  const SEASONS = [
+    ['winter', '#four-seasons-month-labels .four-seasons-month-label:nth-child(-n+3)'],
+    ['spring', '#four-seasons-month-labels .four-seasons-month-label:nth-child(n+4):nth-child(-n+6)'],
+    ['summer', '#four-seasons-month-labels .four-seasons-month-label:nth-child(n+7):nth-child(-n+9)'],
+    ['autumn', '#four-seasons-month-labels .four-seasons-month-label:nth-child(n+10):nth-child(-n+12)']
+  ];
+  const style = document.getElementById('td-ms-style');
+
+  // outline = ring of text shadows around every letter
+  function outline(w, c) {
+    const s = [];
+    (w > 2 ? [w, w / 2] : [w]).forEach(r => {
+      for (let i = 0; i < 16; i++) {
+        const a = i * Math.PI / 8;
+        s.push((Math.cos(a) * r).toFixed(2) + 'px ' + (Math.sin(a) * r).toFixed(2) + 'px 0 ' + c);
+      }
+    });
+    return s.join(',');
+  }
+
+  // only seasons you changed get a rule, the default look stays as it is
+  function build() {
+    let css = '';
+    SEASONS.forEach(([key, sel]) => {
+      const w = parseFloat(get('td-ms-fr-w-' + key));
+      const c = get('td-ms-fr-c-' + key) || '#000000';
+      if (w > 0) css += sel + '{text-shadow:' + outline(w, c) + ' !important;}\n';
+    });
+    style.textContent = css;
+  }
+
+  function addRows() {
+    if (document.getElementById('td-ms-fr-w-winter')) return true;
+    for (const [key] of SEASONS) if (!document.getElementById('month-color-' + key)) return false;
+
+    SEASONS.forEach(([key]) => {
+      const w = get('td-ms-fr-w-' + key) ?? 0;
+      const c = get('td-ms-fr-c-' + key) ?? '#000000';
+
+      const r1 = document.createElement('div');
+      r1.className = 'row';
+      r1.innerHTML = 'Рамка тексту (товщина) <span style="display:flex;align-items:center;gap:6px;">' +
+        '<input type="range" id="td-ms-fr-w-' + key + '" min="0" max="8" step="0.5" value="' + w + '">' +
+        '<b id="td-ms-fr-w-' + key + '-v" style="min-width:24px;text-align:right;">' + w + '</b></span>';
+
+      const r2 = document.createElement('div');
+      r2.className = 'row';
+      r2.innerHTML = 'Рамка тексту (колір) <input type="color" id="td-ms-fr-c-' + key + '" value="' + c + '">';
+
+      document.getElementById('month-color-' + key).closest('.row').after(r1, r2);
+    });
+    return true;
+  }
+
+  document.addEventListener('input', e => {
+    const m = /^td-ms-fr-([wc])-(winter|spring|summer|autumn)$/.exec(e.target.id || '');
+    if (!m) return;
+    set(e.target.id, e.target.value);
+    const out = document.getElementById(e.target.id + '-v');
+    if (out) out.textContent = e.target.value;
+    build();
+  });
+
+  function start() {
+    build();                                       // restore saved frames after reload
+    let tries = 0;
+    const t = setInterval(() => { if (addRows() || ++tries > 30) clearInterval(t); }, 300);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+  else start();
+})();
+</script>
+<!-- END SEASON MONTH NAMES: FRAME -->
+
+
+<!-- ===== CLOCK HANDS: OUTLINE / FRAME SETTINGS ===== -->
+<style id="clock-hands-frame-style">
+  #h-h {
+    outline: var(--h-hand-frame-w, 1.5px)
+             solid var(--h-hand-frame-c, #ffffff) !important;
+    outline-offset: 0 !important;
+  }
+
+  #m-h {
+    outline: var(--m-hand-frame-w, 1.5px)
+             solid var(--m-hand-frame-c, #ffffff) !important;
+    outline-offset: 0 !important;
+  }
+
+  #s-h {
+    outline: var(--s-hand-frame-w, 1.5px)
+             solid var(--s-hand-frame-c, #ffffff) !important;
+    outline-offset: 0 !important;
+  }
+</style>
+
+<script id="clock-hands-frame-settings">
+(() => {
+  'use strict';
+
+  if (window.__clockHandsFrameSettings) return;
+  window.__clockHandsFrameSettings = true;
+
+  const root = document.documentElement;
+
+  const hands = [
+    { key: 'h', name: 'Годинна' },
+    { key: 'm', name: 'Хвилинна' },
+    { key: 's', name: 'Секундна' }
+  ];
+
+  const get = (key, fallback) => {
+    try {
+      return localStorage.getItem(key) || fallback;
+    } catch (_) {
+      return fallback;
+    }
+  };
+
+  const save = (key, value) => {
+    try {
+      localStorage.setItem(key, value);
+    } catch (_) {}
+  };
+
+  function apply(hand, type, value) {
+    const variable = type === 'width'
+      ? `--${hand.key}-hand-frame-w`
+      : `--${hand.key}-hand-frame-c`;
+
+    root.style.setProperty(
+      variable,
+      type === 'width' ? value + 'px' : value
+    );
+  }
+
+  function init() {
+    const panel = document.getElementById('panel');
+    if (!panel) return false;
+
+    for (const hand of hands) {
+      const thickness = document.getElementById(
+        `v-${hand.key}-hand-w`
+      );
+
+      if (!thickness) return false;
+
+      if (document.getElementById(
+        `v-${hand.key}-hand-frame-w`
+      )) continue;
+
+      const widthKey = `v-${hand.key}-hand-frame-w`;
+      const colorKey = `v-${hand.key}-hand-frame-c`;
+
+      const widthRow = document.createElement('div');
+      widthRow.className = 'row';
+      widthRow.innerHTML = `
+        ${hand.name} (рамка — товщина)
+        <input type="range"
+          id="${widthKey}" min="0" max="5" step="0.5">
+      `;
+
+      const colorRow = document.createElement('div');
+      colorRow.className = 'row';
+      colorRow.innerHTML = `
+        ${hand.name} (рамка — колір)
+        <input type="color" id="${colorKey}">
+      `;
+
+      thickness.closest('.row').after(widthRow, colorRow);
+
+      const widthInput = widthRow.querySelector('input');
+      const colorInput = colorRow.querySelector('input');
+
+      widthInput.value = get(widthKey, '1.5');
+      colorInput.value = get(colorKey, '#ffffff');
+
+      widthInput.addEventListener('input', () => {
+        save(widthKey, widthInput.value);
+        apply(hand, 'width', widthInput.value);
+      });
+
+      colorInput.addEventListener('input', () => {
+        save(colorKey, colorInput.value);
+        apply(hand, 'color', colorInput.value);
+      });
+
+      apply(hand, 'width', widthInput.value);
+      apply(hand, 'color', colorInput.value);
+    }
+
+    return true;
+  }
+
+  function start() {
+    if (init()) return;
+
+    const observer = new MutationObserver(() => {
+      if (init()) observer.disconnect();
+    });
+
+    observer.observe(document.getElementById('panel') || document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', start, { once: true });
+  } else {
+    start();
+  }
+})();
+</script>
+<!-- ===== END CLOCK HANDS FRAME SETTINGS ===== -->
+
+
+
+<!-- TEXT-ONLY FRAMES: WEEKDAY HEADER + CURRENT DAY -->
+<script>
+(() => {
+  const ready = fn =>
+    document.readyState === 'loading'
+      ? document.addEventListener('DOMContentLoaded', fn)
+      : fn();
+
+  ready(() => {
+    if (document.getElementById('weekday-text-frame-style')) return;
+
+    const root = document.documentElement;
+    const header = document.getElementById('hdr-row');
+    if (!header) return;
+
+    const style = document.createElement('style');
+    style.id = 'weekday-text-frame-style';
+    style.textContent = `
+      #hdr-row .hdr-cell .weekday-frame-text {
+        -webkit-text-stroke:
+          var(--weekday-frame-w, 0px)
+          var(--weekday-frame-c, #000000);
+        paint-order: stroke fill;
+      }
+
+      #hdr-row .hdr-cell.today .weekday-frame-text {
+        -webkit-text-stroke:
+          var(--today-text-frame-w, 0px)
+          var(--today-text-frame-c, #ff0000);
+        paint-order: stroke fill;
+      }
+
+      #weekday-text-frame-controls .row {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 5px;
+        margin: 7px 0;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const settings = [
+      {
+        title: 'Рамка текста заголовка — цвет',
+        label: 'Рамка текста заголовка — толщина (px)',
+        colorId: 'weekday-frame-color',
+        widthId: 'weekday-frame-width',
+        colorKey: 'weekday-frame-c',
+        widthKey: 'weekday-frame-w',
+        cssColor: '--weekday-frame-c',
+        cssWidth: '--weekday-frame-w',
+        defaultColor: '#000000'
+      },
+      {
+        title: 'Рамка текста поточного дня — цвет',
+        label: 'Рамка текста поточного дня — толщина (px)',
+        colorId: 'today-text-frame-color',
+        widthId: 'today-text-frame-width',
+        colorKey: 'today-text-frame-c',
+        widthKey: 'today-text-frame-w',
+        cssColor: '--today-text-frame-c',
+        cssWidth: '--today-text-frame-w',
+        defaultColor: '#ff0000'
+      }
+    ];
+
+    const controls = document.createElement('div');
+    controls.id = 'weekday-text-frame-controls';
+
+    settings.forEach(s => {
+      const row1 = document.createElement('div');
+      row1.className = 'row';
+      row1.innerHTML =
+        '<label>' + s.title + '</label>' +
+        '<input type="color" id="' + s.colorId + '">';
+
+      const row2 = document.createElement('div');
+      row2.className = 'row';
+      row2.innerHTML =
+        '<label>' + s.label + '</label>' +
+        '<input type="range" id="' + s.widthId +
+        '" min="0" max="5" step="0.1">';
+
+      controls.append(row1, row2);
+
+      const color = row1.querySelector('input');
+      const width = row2.querySelector('input');
+
+      color.value = localStorage.getItem(s.colorKey) || s.defaultColor;
+      width.value = localStorage.getItem(s.widthKey) || '0';
+
+      const apply = () => {
+        root.style.setProperty(s.cssColor, color.value);
+        root.style.setProperty(s.cssWidth, width.value + 'px');
+      };
+
+      color.addEventListener('input', () => {
+        localStorage.setItem(s.colorKey, color.value);
+        apply();
+      });
+
+      width.addEventListener('input', () => {
+        localStorage.setItem(s.widthKey, width.value);
+        apply();
+      });
+
+      apply();
+    });
+
+    const headerSize = document.getElementById('v-hdr-item-fs');
+    const todaySize = document.getElementById('v-cur-day-fs');
+
+    if (todaySize && todaySize.closest('.row')) {
+      todaySize.closest('.row').after(controls);
+    } else if (headerSize && headerSize.closest('.row')) {
+      headerSize.closest('.row').after(controls);
+    } else {
+      document.getElementById('panel')?.appendChild(controls);
+    }
+
+    function wrapText(cell) {
+      const walker = document.createTreeWalker(
+        cell,
+        NodeFilter.SHOW_TEXT
+      );
+
+      const nodes = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.nodeValue.trim()) continue;
+
+        const parent = node.parentElement;
+        if (!parent) continue;
+
+        if (parent.closest(
+          'button, .td-top-btn, .pl-h, script, style, .weekday-frame-text'
+        )) continue;
+
+        nodes.push(node);
+      }
+
+      nodes.forEach(node => {
+        const span = document.createElement('span');
+        span.className = 'weekday-frame-text';
+        node.parentNode.replaceChild(span, node);
+        span.appendChild(node);
+      });
+    }
+
+    function update() {
+      header.querySelectorAll('.hdr-cell').forEach((cell, index) => {
+        if (index > 0) wrapText(cell);
+      });
+    }
+
+    update();
+
+    new MutationObserver(update).observe(header, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  });
+})();
+</script>
+<!-- END TEXT-ONLY FRAMES -->
+
+
+<!-- TEXT-ONLY FRAME: MONTH NAMES - FIXED -->
+<script>
+(() => {
+  const ready = fn =>
+    document.readyState === 'loading'
+      ? document.addEventListener('DOMContentLoaded', fn)
+      : fn();
+
+  ready(() => {
+    if (document.getElementById('month-text-frame-controls')) return;
+
+    const root = document.documentElement;
+
+    const style = document.createElement('style');
+    style.id = 'month-text-frame-style';
+    style.textContent = `
+      #hdr-row + * .month-frame-text,
+      .month-frame-text {
+        -webkit-text-stroke:
+          var(--month-text-frame-w, 0px)
+          var(--month-text-frame-c, #000000);
+        paint-order: stroke fill;
+      }
+
+      #month-text-frame-controls .row {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 5px;
+        margin: 7px 0;
+      }
+    `;
+    document.head.appendChild(style);
+
+    const controls = document.createElement('div');
+    controls.id = 'month-text-frame-controls';
+    controls.innerHTML = `
+      <div class="row">
+        <label>Рамка текста місяців — колір</label>
+        <input type="color" id="month-text-frame-color">
+      </div>
+      <div class="row">
+        <label>Рамка текста місяців — товщина (px)</label>
+        <input type="range" id="month-text-frame-width"
+               min="0" max="5" step="0.1">
+      </div>
+    `;
+
+    const color = controls.querySelector('#month-text-frame-color');
+    const width = controls.querySelector('#month-text-frame-width');
+
+    color.value = localStorage.getItem('month-text-frame-c') || '#000000';
+    width.value = localStorage.getItem('month-text-frame-w') || '0';
+
+    function apply() {
+      root.style.setProperty('--month-text-frame-c', color.value);
+      root.style.setProperty('--month-text-frame-w', width.value + 'px');
+    }
+
+    color.addEventListener('input', () => {
+      localStorage.setItem('month-text-frame-c', color.value);
+      apply();
+    });
+
+    width.addEventListener('input', () => {
+      localStorage.setItem('month-text-frame-w', width.value);
+      apply();
+    });
+
+    const oldSlider = document.getElementById('v-months-h');
+    if (oldSlider?.closest('.row')) {
+      oldSlider.closest('.row').after(controls);
+    } else {
+      document.getElementById('panel')?.appendChild(controls);
+    }
+
+    function updateMonthRow() {
+      const header = document.getElementById('hdr-row');
+      const row = header?.previousElementSibling;
+      if (!row) return;
+
+      const walker = document.createTreeWalker(
+        row,
+        NodeFilter.SHOW_TEXT
+      );
+
+      const nodes = [];
+      while (walker.nextNode()) {
+        const node = walker.currentNode;
+        if (!node.nodeValue.trim()) continue;
+
+        if (node.parentElement?.closest(
+          'script, style, .month-frame-text'
+        )) continue;
+
+        nodes.push(node);
+      }
+
+      nodes.forEach(node => {
+        const span = document.createElement('span');
+        span.className = 'month-frame-text';
+        node.parentNode.replaceChild(span, node);
+        span.appendChild(node);
+      });
+    }
+
+    apply();
+    updateMonthRow();
+
+    const view = document.querySelector('.view-area') || document.body;
+
+    new MutationObserver(updateMonthRow).observe(view, {
+      childList: true,
+      subtree: true,
+      characterData: true
+    });
+  });
+})();
+</script>
+<!-- END TEXT-ONLY FRAME: MONTH NAMES - FIXED -->
 
 </html>
